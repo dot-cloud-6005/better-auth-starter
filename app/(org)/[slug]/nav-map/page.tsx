@@ -14,7 +14,6 @@ export default function MapPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tracking, setTracking] = useState(false);
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [colorMode, setColorMode] = useState<"amber" | "auto">("amber");
   const [selected, setSelected] = useState<Asset | null>(null);
@@ -22,7 +21,6 @@ export default function MapPage() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const userMarkerRef = useRef<Marker | null>(null);
   const watchIdRef = useRef<number | null>(null);
-  const firstFixRef = useRef<boolean>(false);
   const userPosRef = useRef<{ lon: number; lat: number } | null>(null);
   const assetsRef = useRef<Asset[]>([]);
   const LABEL_MIN_ZOOM = 14; // labels appear from this zoom and above
@@ -404,34 +402,19 @@ export default function MapPage() {
     };
   }, [colorMode]);
 
-  // High-accuracy tracking toggle
+  // Always attempt precise tracking on page load (no auto-centering)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-
-    if (!tracking) {
-      if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-      if (userMarkerRef.current) {
-        userMarkerRef.current.remove();
-        userMarkerRef.current = null;
-      }
-  firstFixRef.current = false;
-      return;
-    }
-
     if (!("geolocation" in navigator)) {
       setError("Geolocation not supported by this browser");
       return;
     }
-
-  // Mark that the next position we get is the first fix after enabling
-  firstFixRef.current = true;
-
-  watchIdRef.current = navigator.geolocation.watchPosition(
+    watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
-    userPosRef.current = { lon: longitude, lat: latitude };
+        userPosRef.current = { lon: longitude, lat: latitude };
+        // Create or update user marker
         let marker = userMarkerRef.current;
         if (!marker) {
           const el = document.createElement("div");
@@ -440,63 +423,41 @@ export default function MapPage() {
           el.style.borderRadius = "9999px";
           el.style.backgroundColor = "#ef4444"; // red dot
           el.style.border = "2px solid white";
-          marker = new maplibregl.Marker({ element: el })
-            .setLngLat([longitude, latitude])
-            .addTo(map);
+          marker = new maplibregl.Marker({ element: el }).setLngLat([longitude, latitude]).addTo(map);
           userMarkerRef.current = marker;
         } else {
           marker.setLngLat([longitude, latitude]);
         }
-        // On the first fix after enabling, also zoom in closer (at least 17)
-        if (firstFixRef.current) {
-          const currentZoom = map.getZoom ? map.getZoom() : 0;
-          const targetZoom = Math.max(17, Number.isFinite(currentZoom) ? currentZoom : 0);
-          map.easeTo({ center: [longitude, latitude], zoom: targetZoom, duration: 600 });
-          firstFixRef.current = false;
-        } else {
-          const currentZoom = map.getZoom ? map.getZoom() : 0;
-          const minTrackingZoom = 17; // suburb-level
-          const targetZoom = Number.isFinite(currentZoom) && currentZoom >= minTrackingZoom ? currentZoom : minTrackingZoom;
-          map.easeTo({ center: [longitude, latitude], zoom: targetZoom, duration: 500 });
-        }
         setAccuracy(Number.isFinite(accuracy) ? Math.round(accuracy) : null);
-        // Update accuracy circle layer
+        // Update accuracy circle layer only; do not recenter the map automatically
         const src = map.getSource("user-accuracy-src") as maplibregl.GeoJSONSource | undefined;
         if (src) {
           const feature = ((): GeoJSON.Feature | null => {
             if (!Number.isFinite(accuracy) || accuracy == null) return null;
-            // Limit absurdly large radii to avoid performance issues
             const clamped = Math.min(accuracy, 1000);
-            // Use the helper defined in setup scope
-            const poly = (function () {
-              const degLat = clamped / 111320;
-              const degLonFactor = Math.cos((latitude * Math.PI) / 180);
-              const degLon = degLat / Math.max(0.000001, degLonFactor);
-              const steps = 64;
-              const coords: [number, number][] = [];
-              for (let i = 0; i <= steps; i++) {
-                const theta = (i / steps) * 2 * Math.PI;
-                const dx = Math.cos(theta) * degLon;
-                const dy = Math.sin(theta) * degLat;
-                coords.push([longitude + dx, latitude + dy]);
-              }
-              return {
-                type: "Feature",
-                geometry: { type: "Polygon", coordinates: [coords] },
-                properties: {},
-              } as GeoJSON.Feature<GeoJSON.Polygon>;
-            })();
-            return poly as GeoJSON.Feature;
+            const degLat = clamped / 111320;
+            const degLonFactor = Math.cos((latitude * Math.PI) / 180);
+            const degLon = degLat / Math.max(0.000001, degLonFactor);
+            const steps = 64;
+            const coords: [number, number][] = [];
+            for (let i = 0; i <= steps; i++) {
+              const theta = (i / steps) * 2 * Math.PI;
+              const dx = Math.cos(theta) * degLon;
+              const dy = Math.sin(theta) * degLat;
+              coords.push([longitude + dx, latitude + dy]);
+            }
+            return {
+              type: "Feature",
+              geometry: { type: "Polygon", coordinates: [coords] },
+              properties: {},
+            } as GeoJSON.Feature<GeoJSON.Polygon>;
           })();
-          const fc: GeoJSON.FeatureCollection = {
-            type: "FeatureCollection",
-            features: feature ? [feature] : [],
-          };
+          const fc: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: feature ? [feature] : [] };
           src.setData(fc);
         }
       },
       (err) => {
-  console.warn("Geolocation error", err);
+        console.warn("Geolocation error", err);
         const msg = err?.message || String(err);
         if (/permission/i.test(msg) || /denied/i.test(msg)) {
           setError("Location permission denied. Please allow access in your browser settings.");
@@ -506,18 +467,13 @@ export default function MapPage() {
           setError("Unable to get location. Move outdoors or try again.");
         }
       },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 20000,
-      }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
     );
-
     return () => {
       if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     };
-  }, [tracking]);
+  }, []);
 
   // One-shot recenter helper bound to the button
   const recenterToUser = () => {
@@ -626,7 +582,7 @@ export default function MapPage() {
             </button>
           </div>
         </div>
-        {/* Right group: tracking + desktop search */}
+    {/* Right group: controls + desktop search */}
   <div className="flex items-center gap-3 pr-4 sm:pr-6">
           {/* Desktop search (hidden on mobile), centered-ish by flex distribution */}
           <div className="hidden sm:flex items-center gap-2 mx-auto">
@@ -689,35 +645,44 @@ export default function MapPage() {
               Go
             </button>
           </div>
-          <button
-            onClick={() => setTracking((v) => !v)}
-            className={`px-3 py-1.5 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
-              tracking
-                ? "bg-green-600 text-white border-green-600 dark:border-green-600"
-                : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200 dark:hover:bg-neutral-700"
-            }`}
-          >
-            {tracking ? "Disable" : "Enable"} tracking
-          </button>
+          {/* Locate button: icon on mobile, text on desktop */}
           <button
             onClick={recenterToUser}
-            className="px-3 py-1.5 rounded border text-sm bg-white border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200 dark:hover:bg-neutral-700"
+            className="px-2 sm:px-3 py-1.5 rounded border text-sm bg-white border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200 dark:hover:bg-neutral-700 flex items-center justify-center"
             title="Center on my location"
+            aria-label="Locate me"
           >
-            Locate me
+            <span className="sm:hidden inline-block" aria-hidden>
+              {/* Crosshair icon */}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M12 2v3M12 19v3M22 12h-3M5 12H2"></path>
+                <path d="M19.07 4.93l-2.12 2.12M7.05 16.95l-2.12 2.12M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12"></path>
+              </svg>
+            </span>
+            <span className="hidden sm:inline">Locate me</span>
           </button>
+          {/* Colors toggle: icon on mobile, label on desktop */}
           <button
             onClick={() => setColorMode((m) => (m === "auto" ? "amber" : "auto"))}
-            className="px-3 py-1.5 rounded border text-sm bg-white border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200 dark:hover:bg-neutral-700"
+            className="px-2 sm:px-3 py-1.5 rounded border text-sm bg-white border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200 dark:hover:bg-neutral-700 flex items-center justify-center"
             title="Toggle asset colors"
+            aria-label="Toggle asset colors"
           >
-            Colors: {colorMode === "auto" ? "Auto" : "Amber"}
-          </button>
-          {tracking && (
-            <span className="text-sm px-2 py-1 rounded bg-white border border-gray-300 text-gray-700 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200">
-              {accuracy != null ? `±${accuracy} m` : "--"}
+            <span className="sm:hidden inline-block" aria-hidden>
+              {/* Palette icon */}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22c5.523 0 10-4.03 10-9s-4.477-9-10-9S2 8.03 2 13c0 2.761 2.239 5 5 5h1a2 2 0 0 0 2-2c0-1.105-.895-2-2-2H8"></path>
+                <circle cx="7.5" cy="10.5" r="1.5"></circle>
+                <circle cx="12" cy="8.5" r="1.5"></circle>
+                <circle cx="16.5" cy="10.5" r="1.5"></circle>
+              </svg>
             </span>
-          )}
+            <span className="hidden sm:inline">Colours: {colorMode === "auto" ? "Auto" : "Amber"}</span>
+          </button>
+          <span className="text-sm px-2 py-1 rounded bg-white border border-gray-300 text-gray-700 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200">
+            {accuracy != null ? `±${accuracy} m` : "--"}
+          </span>
           {loading && <span className="text-muted-foreground text-sm">Loading…</span>}
           {error && <span className="text-red-600 text-sm">{error}</span>}
           {searchError && <span className="text-red-600 text-sm">{searchError}</span>}
