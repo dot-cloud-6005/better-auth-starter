@@ -116,7 +116,9 @@ export const auth = betterAuth({
             },
             async (ctx) => {
                 const { adapter } = ctx.context;
-                const { email, name } = ctx.body;
+                const emailRaw = ctx.body.email;
+                const name = ctx.body.name;
+                const email = (emailRaw || "").trim().toLowerCase();
                 const ip = ctx.request?.headers.get("x-forwarded-for") || ctx.request?.headers.get("x-real-ip") || "ip:unknown";
                 const emailKey = `otp:req:${email}`;
                 const ipKey = `otp:req-ip:${ip}`;
@@ -195,7 +197,10 @@ export const auth = betterAuth({
             },
             async (ctx) => {
                 const { adapter, sessionConfig, generateId } = ctx.context;
-                const { email, code, name } = ctx.body;
+                const emailRaw = ctx.body.email;
+                const code = ctx.body.code;
+                const name = ctx.body.name;
+                const email = (emailRaw || "").trim().toLowerCase();
                 const ip = ctx.request?.headers.get("x-forwarded-for") || ctx.request?.headers.get("x-real-ip") || "ip:unknown";
                 const lockKey = `otp:lock:${email}`;
                 if (await isLocked(lockKey)) {

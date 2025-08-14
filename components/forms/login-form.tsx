@@ -65,10 +65,11 @@ export function LoginForm({
   async function submitRequest(values: z.infer<typeof requestSchema>) {
     setIsLoading(true);
     try {
+      const normalized = values.email.trim().toLowerCase();
       const res = await fetch("/api/auth/request-otp", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: values.email }),
+        body: JSON.stringify({ email: normalized }),
       });
       if (!res.ok) {
         let msg = "Failed to send code";
@@ -81,7 +82,7 @@ export function LoginForm({
         }
         throw new Error(msg);
       }
-      setEmail(values.email);
+  setEmail(normalized);
       setStep("verify");
       toast.success("We sent you a 6-digit code.");
     } catch (e: unknown) {
@@ -98,7 +99,7 @@ export function LoginForm({
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, code: values.code }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), code: values.code }),
       });
       if (!res.ok) {
         const msg = await res.text();
