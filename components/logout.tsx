@@ -9,8 +9,19 @@ export function Logout() {
   const router = useRouter();
 
   const handleLogout = async () => {
-    await authClient.signOut();
-    router.push("/");
+    try {
+      await authClient.signOut();
+    } catch (e) {
+      // If the request was blocked (e.g., CSP/baseURL), log and continue with hard redirect
+      console.error("Sign out failed; forcing navigation", e);
+    } finally {
+      // Force a full navigation so server reads the updated cookie state
+      if (typeof window !== "undefined") {
+        window.location.href = "/";
+      } else {
+        router.replace("/");
+      }
+    }
   };
 
   return (
