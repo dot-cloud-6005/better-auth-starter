@@ -1,7 +1,7 @@
 import Link from "next/link";
-
-import { ResetPasswordForm } from "@/components/forms/reset-password-form";
 import Image from "next/image";
+import { Suspense } from "react";
+import { ResetPasswordForm } from "@/components/forms/reset-password-form";
 
 export default function LoginPage() {
   return (
@@ -22,7 +22,9 @@ export default function LoginPage() {
           </div>
           Better Auth Starter
         </Link>
-        <ResetPasswordForm />
+        <Suspense>
+          <ResetPasswordForm />
+        </Suspense>
       </div>
     </div>
   );

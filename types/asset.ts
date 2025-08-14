@@ -1,0 +1,32 @@
+// Shared Asset type for both server and client
+export type Asset = {
+  Asset_Number: number;
+  Location_Code: string;
+  NavAid_Name: string;
+  NavAid_Primary_Function: string;
+  STATUS?: string;
+  Latitude: number;
+  Longitude: number;
+  NavAid_Colour?: string;
+  Northing?: number;
+  Easting?: number;
+  UTM_Zone?: number;
+  Chart_Character?: string;
+  Flash_Sequence?: string;
+  Light_Range?: string;
+  Light_Colour?: string;
+  Light_Model?: string;
+  Lead_Bearing?: string;
+  Daymark?: string;
+  Mark_Structure?: string;
+  Situation?: string;
+  Risk_Category?: number;
+  Infrastructure_Subgroup_Code?: string;
+  Function_Code?: string;
+  Horizontal_Accuracy?: string;
+  Responsible_Agency?: string;
+  OWNER?: string;
+  NavAid_Shape?: string;
+  AIS_Type?: string;
+  MMSI_Number?: string;
+};

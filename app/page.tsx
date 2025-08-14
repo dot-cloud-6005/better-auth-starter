@@ -1,31 +1,28 @@
 import { ModeSwitcher } from "@/components/mode-switcher";
 import { Button } from "@/components/ui/button";
-import Image from "next/image";
 import Link from "next/link";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { Ship } from "lucide-react";
 
-export default function Home() {
+export default async function Home() {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (session) {
+    redirect("/landing");
+  }
+
   return (
     <>
       <header className="absolute top-0 right-0 flex justify-end items-center p-4">
         <ModeSwitcher />
       </header>
       <div className="flex flex-col gap-5 items-center justify-center h-screen px-5 text-center">
-        <Image
-          src="/better-auth-starter.png"
-          alt="Better Auth"
-          width={100}
-          height={100}
-          className="rounded-lg dark:invert"
-        />
+        <Ship className="w-24 h-24" />
 
-        <h1 className="text-4xl font-bold">Better Auth Starter</h1>
+        <h1 className="text-4xl font-bold">Developed by 6005</h1>  
 
-        <p className="text-lg">
-          This is a starter project for Better Auth. It is a simple project that
-          uses Better Auth to authenticate users.
-        </p>
-
-        <div className="flex gap-2">
+        <div className="flex gap-6">
           <Link href="/login">
             <Button>Login</Button>
           </Link>

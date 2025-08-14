@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
+import UnregisterSW from "@/components/dev/unregister-sw";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -14,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Better Auth Starter",
+  title: "Dev 6005",
   description:
-    "Simple starter pack for Better Auth, with Shadcn, Drizzle, and Neon",
+    "Developed by 6005",
 };
 
 export default function RootLayout({
@@ -38,6 +39,8 @@ export default function RootLayout({
           {children}
           <Toaster />
         </ThemeProvider>
+
+  <UnregisterSW />
       </body>
     </html>
   );

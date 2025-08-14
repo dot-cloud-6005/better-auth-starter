@@ -6,7 +6,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div>
+  <div className="pt-16">
       <Header />
       {children}
     </div>

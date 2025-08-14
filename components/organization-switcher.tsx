@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/select";
 import { Organization } from "@/db/schema";
 import { authClient } from "@/lib/auth-client";
+import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 interface OrganizationSwitcherProps {
@@ -19,6 +20,8 @@ export function OrganizationSwitcher({
   organizations,
 }: OrganizationSwitcherProps) {
   const { data: activeOrganization } = authClient.useActiveOrganization();
+  const router = useRouter();
+  const pathname = usePathname();
 
   const handleChangeOrganization = async (organizationId: string) => {
     try {
@@ -32,6 +35,14 @@ export function OrganizationSwitcher({
         return;
       }
 
+      const target = organizations.find((o) => o.id === organizationId);
+      // Update URL to the same subpath but with the new slug
+      if (target?.slug && pathname) {
+        const nextPath = pathname.replace(/^\/[\w-]+/, `/${target.slug}`);
+        router.push(nextPath);
+      } else {
+        router.refresh();
+      }
       toast.success("Organization switched successfully");
     } catch (error) {
       console.error(error);
@@ -45,7 +56,7 @@ export function OrganizationSwitcher({
       value={activeOrganization?.id}
     >
       <SelectTrigger className="w-[180px]">
-        <SelectValue placeholder="Theme" />
+        <SelectValue placeholder="Select Organisation" />
       </SelectTrigger>
       <SelectContent>
         {organizations.map((organization) => (

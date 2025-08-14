@@ -22,8 +22,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 
-import { signIn } from "@/server/users";
-
 import { z } from "zod";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -32,9 +30,11 @@ import { Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import Link from "next/link";
 
-const formSchema = z.object({
+const requestSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+});
+const verifySchema = z.object({
+  code: z.string().length(6),
 });
 
 export function LoginForm({
@@ -42,136 +42,204 @@ export function LoginForm({
   ...props
 }: React.ComponentProps<"div">) {
   const [isLoading, setIsLoading] = useState(false);
+  const [step, setStep] = useState<"request" | "verify">("request");
+  const [email, setEmail] = useState<string>("");
 
   const router = useRouter();
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
+  const requestForm = useForm<z.infer<typeof requestSchema>>({
+    resolver: zodResolver(requestSchema),
+    defaultValues: { email: "" },
+  });
+  const verifyForm = useForm<z.infer<typeof verifySchema>>({
+    resolver: zodResolver(verifySchema),
+    defaultValues: { code: "" },
   });
 
-  const signInWithGoogle = async () => {
+  /* const signInWithGoogle = async () => {
     await authClient.signIn.social({
       provider: "google",
-      callbackURL: "/dashboard",
+      callbackURL: "/landing",
     });
-  };
+  }; */
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  async function submitRequest(values: z.infer<typeof requestSchema>) {
     setIsLoading(true);
-
-    const { success, message } = await signIn(values.email, values.password);
-
-    if (success) {
-      toast.success(message as string);
-      router.push("/dashboard");
-    } else {
-      toast.error(message as string);
+    try {
+      const res = await fetch("/api/auth/request-otp", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: values.email }),
+      });
+      if (!res.ok) throw new Error("Failed to send code");
+      setEmail(values.email);
+      setStep("verify");
+      toast.success("We sent you a 6-digit code.");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Could not send code";
+      toast.error(msg);
+    } finally {
+      setIsLoading(false);
     }
+  }
 
-    setIsLoading(false);
+  async function submitVerify(values: z.infer<typeof verifySchema>) {
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, code: values.code }),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Invalid code");
+      }
+      toast.success("Signed in successfully.");
+      router.push("/landing");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Invalid code";
+      toast.error(msg);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
+    <div
+      className={cn(
+        "flex flex-col gap-6 max-w-md md:max-w-xl lg:max-w-2xl mx-auto",
+        className,
+      )}
+      {...props}
+    >
       <Card>
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl">Welcome back</CardTitle>
-          <CardDescription>Login with your Google account</CardDescription>
+        <CardHeader className="text-center md:py-8">
+          <CardTitle className="text-xl md:text-3xl">Welcome back</CardTitle>
+          <CardDescription className="md:text-base">
+            Login with your ventia email
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              <div className="grid gap-6">
-                <div className="flex flex-col gap-4">
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    type="button"
-                    onClick={signInWithGoogle}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                      <path
-                        d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                    Login with Google
-                  </Button>
-                </div>
-                <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">
-                  <span className="bg-card text-muted-foreground relative z-10 px-2">
-                    Or continue with
-                  </span>
-                </div>
-                <div className="grid gap-6">
-                  <div className="grid gap-3">
-                    <FormField
-                      control={form.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Email</FormLabel>
-                          <FormControl>
-                            <Input placeholder="m@example.com" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  <div className="grid gap-3">
-                    <div className="flex flex-col gap-2">
+          {step === "request" ? (
+            <Form {...requestForm}>
+              <form
+                onSubmit={requestForm.handleSubmit(submitRequest)}
+                className="space-y-8 md:space-y-10"
+              >
+                <div className="grid gap-6 md:gap-8">
+                  <div className="after:border-border relative text-center text-sm md:text-base after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t"></div>
+                  <div className="grid gap-6 md:gap-8">
+                    <div className="grid gap-3 md:gap-4">
                       <FormField
-                        control={form.control}
-                        name="password"
+                        control={requestForm.control}
+                        name="email"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Password</FormLabel>
+                            <FormLabel className="md:text-base">Email</FormLabel>
                             <FormControl>
                               <Input
-                                placeholder="********"
+                                placeholder="@ventia.com"
+                                className="text-base md:text-lg md:h-12"
                                 {...field}
-                                type="password"
                               />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-                      <Link
-                        href="/forgot-password"
-                        className="ml-auto text-sm underline-offset-4 hover:underline"
-                      >
-                        Forgot your password?
-                      </Link>
                     </div>
+                    <Button
+                      type="submit"
+                      className="w-full md:h-12 md:text-base"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? (
+                        <Loader2 className="size-4 md:size-5 animate-spin" />
+                      ) : (
+                        "Send code"
+                      )}
+                    </Button>
                   </div>
-                  <Button type="submit" className="w-full" disabled={isLoading}>
+                  <div className="text-center text-sm md:text-base">
+                    Don&apos;t have an account?{" "}
+                    <Link href="/signup" className="underline underline-offset-4">
+                      Sign up
+                    </Link>
+                  </div>
+                </div>
+              </form>
+            </Form>
+          ) : (
+            <Form {...verifyForm}>
+              <form
+                onSubmit={verifyForm.handleSubmit(submitVerify)}
+                className="space-y-8 md:space-y-10"
+              >
+                <div className="grid gap-6 md:gap-8">
+                  <div className="grid gap-3 md:gap-4">
+                    <FormField
+                      control={verifyForm.control}
+                      name="code"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="md:text-base">
+                            Enter code sent to {email}
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="123456"
+                              maxLength={6}
+                              className="text-base md:text-lg md:h-12"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    className="w-full md:h-12 md:text-base"
+                    disabled={isLoading}
+                  >
                     {isLoading ? (
-                      <Loader2 className="size-4 animate-spin" />
+                      <Loader2 className="size-4 md:size-5 animate-spin" />
                     ) : (
-                      "Login"
+                      "Verify & sign in"
                     )}
                   </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="md:text-base"
+                    onClick={() => setStep("request")}
+                  >
+                    Use a different email
+                  </Button>
                 </div>
-                <div className="text-center text-sm">
-                  Don&apos;t have an account?{" "}
-                  <Link href="/signup" className="underline underline-offset-4">
-                    Sign up
-                  </Link>
-                </div>
-              </div>
-            </form>
-          </Form>
+              </form>
+            </Form>
+          )}
         </CardContent>
       </Card>
-      <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
-        By clicking continue, you agree to our{" "}
-        <Link href="#">Terms of Service</Link> and{" "}
-        <Link href="#">Privacy Policy</Link>.
+      <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs md:text-sm text-balance *:[a]:underline *:[a]:underline-offset-4">
+        <div className="mx-auto inline-block max-w-[46ch] md:max-w-[60ch] text-left">
+          <p className="mb-1 font-medium text-foreground/80">How sign‑in works</p>
+          <ol className="list-decimal space-y-1 md:space-y-1.5 pl-5">
+            <li>Enter your work email and select “Send code”.</li>
+            <li>Check your inbox for a 6‑digit code (valid for a few minutes).</li>
+            <li>Enter the code and select “Verify &amp; sign in”.</li>
+            <li>
+              If you have one organisation, you’ll go straight to its home.
+              If you have several, pick one and continue.
+            </li>
+            <li>If something looks wrong, choose “Use a different email” to try again.</li>
+          </ol>
+          <p className="mt-2 text-[11px] md:text-xs">
+            Tip: If you don’t see the email, check spam/junk and ensure your inbox accepts external mail.
+          </p>
+        </div>
       </div>
     </div>
   );

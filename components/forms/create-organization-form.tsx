@@ -25,7 +25,11 @@ const formSchema = z.object({
   slug: z.string().min(2).max(50),
 });
 
-export function CreateOrganizationForm() {
+export function CreateOrganizationForm({
+  onSuccess,
+}: {
+  onSuccess?: (org: { id: string; slug: string }) => void;
+}) {
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -39,12 +43,28 @@ export function CreateOrganizationForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       setIsLoading(true);
-      await authClient.organization.create({
+      const { data, error } = await authClient.organization.create({
         name: values.name,
         slug: values.slug,
       });
 
+      if (error) {
+        throw new Error(error.message ?? "Failed to create organization");
+      }
+
+      // Safely extract id and slug from either data.organization or data itself
+      let orgId = "";
+      let slug = values.slug;
+      if (data && typeof data === "object") {
+        const maybeOrg = "organization" in data && data.organization && typeof (data as Record<string, unknown>).organization === "object"
+          ? (data as { organization: { id?: string; slug?: string } }).organization
+          : (data as { id?: string; slug?: string });
+        if (maybeOrg?.id) orgId = maybeOrg.id;
+        if (maybeOrg?.slug) slug = maybeOrg.slug;
+      }
+
       toast.success("Organization created successfully");
+      onSuccess?.({ id: orgId, slug });
     } catch (error) {
       console.error(error);
       toast.error("Failed to create organization");

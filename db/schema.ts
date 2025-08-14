@@ -1,17 +1,22 @@
 import { relations } from "drizzle-orm";
-import { boolean, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, pgSchema, text, timestamp } from "drizzle-orm/pg-core";
+import { integer, doublePrecision, numeric } from "drizzle-orm/pg-core";
 
-export const user = pgTable("user", {
+// Use a dedicated Postgres schema named "drizzle" instead of public
+export const appSchema = pgSchema("drizzle");
+
+export const user = appSchema.table("user", {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     email: text('email').notNull().unique(),
     emailVerified: boolean('email_verified').$defaultFn(() => false).notNull(),
+    isMasterAdmin: boolean('is_master_admin').$defaultFn(() => false).notNull(),
     image: text('image'),
     createdAt: timestamp('created_at').$defaultFn(() => /* @__PURE__ */ new Date()).notNull(),
     updatedAt: timestamp('updated_at').$defaultFn(() => /* @__PURE__ */ new Date()).notNull()
 });
 
-export const session = pgTable("session", {
+export const session = appSchema.table("session", {
     id: text('id').primaryKey(),
     expiresAt: timestamp('expires_at').notNull(),
     token: text('token').notNull().unique(),
@@ -23,7 +28,7 @@ export const session = pgTable("session", {
     activeOrganizationId: text('active_organization_id')
 });
 
-export const account = pgTable("account", {
+export const account = appSchema.table("account", {
     id: text('id').primaryKey(),
     accountId: text('account_id').notNull(),
     providerId: text('provider_id').notNull(),
@@ -39,7 +44,7 @@ export const account = pgTable("account", {
     updatedAt: timestamp('updated_at').notNull()
 });
 
-export const verification = pgTable("verification", {
+export const verification = appSchema.table("verification", {
     id: text('id').primaryKey(),
     identifier: text('identifier').notNull(),
     value: text('value').notNull(),
@@ -48,7 +53,7 @@ export const verification = pgTable("verification", {
     updatedAt: timestamp('updated_at').$defaultFn(() => /* @__PURE__ */ new Date())
 });
 
-export const organization = pgTable("organization", {
+export const organization = appSchema.table("organization", {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     slug: text('slug').unique(),
@@ -63,11 +68,11 @@ export const organizationRelations = relations(organization, ({ many }) => ({
 
 export type Organization = typeof organization.$inferSelect;
 
-export const role = pgEnum("role", ["member", "admin", "owner"]);
+export const role = appSchema.enum("role", ["member", "admin", "owner"]);
 
 export type Role = (typeof role.enumValues)[number];
 
-export const member = pgTable("member", {
+export const member = appSchema.table("member", {
     id: text('id').primaryKey(),
     organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
     userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
@@ -92,7 +97,7 @@ export type Member = typeof member.$inferSelect & {
 
 export type User = typeof user.$inferSelect;
 
-export const invitation = pgTable("invitation", {
+export const invitation = appSchema.table("invitation", {
     id: text('id').primaryKey(),
     organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
     email: text('email').notNull(),
@@ -102,4 +107,54 @@ export const invitation = pgTable("invitation", {
     inviterId: text('inviter_id').notNull().references(() => user.id, { onDelete: 'cascade' })
 });
 
-export const schema = { user, session, account, verification, organization, member, invitation, organizationRelations, memberRelations };
+// Add navigation schema + assets table
+export const navigation = pgSchema("navigation");
+
+export const navigationAssets = navigation.table("assets", {
+  Asset_Number: integer("Asset_Number").notNull(),
+  Location_Code: text("Location_Code").notNull(),
+  NavAid_Name: text("NavAid_Name").notNull(),
+  NavAid_Primary_Function: text("NavAid_Primary_Function").notNull(),
+  STATUS: text("STATUS"),
+  Latitude: doublePrecision("Latitude").notNull(),
+  Longitude: doublePrecision("Longitude").notNull(),
+  NavAid_Colour: text("NavAid_Colour"),
+    Northing: numeric("Northing"),
+    Easting: numeric("Easting"),
+    UTM_Zone: integer("UTM_Zone"),
+    Chart_Character: text("Chart_Character"),
+    Flash_Sequence: text("Flash_Sequence"),
+    Light_Range: text("Light_Range"),
+    Light_Colour: text("Light_Colour"),
+    Light_Model: text("Light_Model"),
+    Lead_Bearing: text("Lead_Bearing"),
+    Daymark: text("Daymark"),
+    Mark_Structure: text("Mark_Structure"),
+    Situation: text("Situation"),
+    Risk_Category: integer("Risk_Category"),
+    Infrastructure_Subgroup_Code: text("Infrastructure_Subgroup_Code"),
+    Function_Code: text("Function_Code"),
+    Horizontal_Accuracy: text("Horizontal_Accuracy"),
+    Responsible_Agency: text("Responsible_Agency"),
+    OWNER: text("OWNER"),
+    NavAid_Shape: text("NavAid_Shape"),
+    AIS_Type: text("AIS_Type"),
+    MMSI_Number: text("MMSI_Number"),
+});
+
+export type NavigationAsset = typeof navigationAssets.$inferSelect;
+
+export const schema = {
+  user,
+  session,
+  account,
+  verification,
+  organization,
+  member,
+  invitation,
+  organizationRelations,
+  memberRelations,
+  navigationAssets,
+  navigation,
+};
+export type AppSchema = typeof schema;
