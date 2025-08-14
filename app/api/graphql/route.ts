@@ -104,9 +104,14 @@ const apolloHandler = startServerAndCreateNextHandler(server, {
     const session = await auth.api.getSession({ headers: req.headers });
     const origin = req.headers.get("origin") || "";
     const referer = req.headers.get("referer") || "";
-    const allowedOrigin = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
     const url = new URL(req.url);
-    const sameOrigin = allowedOrigin ? (origin === allowedOrigin || referer.startsWith(allowedOrigin)) : (origin === url.origin || referer.startsWith(url.origin));
+    const rawAllowed = (process.env.ALLOWED_ORIGINS || process.env.NEXT_PUBLIC_APP_URL || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => s.replace(/\/$/, ""));
+    const allowed = rawAllowed.length > 0 ? rawAllowed : [url.origin];
+    const sameOrigin = allowed.some((o) => origin === o || (referer && referer.startsWith(o)));
     return { isAuthenticated: Boolean(session), userId: session?.user.id, sameOrigin } satisfies Ctx;
   },
 });
