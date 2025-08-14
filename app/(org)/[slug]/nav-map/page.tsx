@@ -16,12 +16,14 @@ export default function MapPage() {
   const [error, setError] = useState<string | null>(null);
   const [tracking, setTracking] = useState(false);
   const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [colorMode, setColorMode] = useState<"amber" | "auto">("amber");
   const [selected, setSelected] = useState<Asset | null>(null);
   const [searchId, setSearchId] = useState<string>("");
   const [searchError, setSearchError] = useState<string | null>(null);
   const userMarkerRef = useRef<Marker | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const firstFixRef = useRef<boolean>(false);
+  const userPosRef = useRef<{ lon: number; lat: number } | null>(null);
   const assetsRef = useRef<Asset[]>([]);
   const LABEL_MIN_ZOOM = 14; // labels appear from this zoom and above
 
@@ -370,6 +372,38 @@ export default function MapPage() {
     };
   }, [assets]);
 
+  // Apply color mode to the circle layer and keep it in sync with style changes
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m) return;
+    const LAYER_ID = "assets-circles";
+    const apply = () => {
+      if (!m.getLayer(LAYER_ID)) return;
+      if (colorMode === "auto") {
+        const autoExpr = [
+          "case",
+          ["match", ["downcase", ["get", "NavAid_Colour"]], ["yellow"], true, false], "#facc15",
+          [
+            "any",
+            ["match", ["downcase", ["get", "NavAid_Colour"]], ["black/yellow", "yellow/black"], true, false],
+            ["in", "Cardinal", ["get", "NavAid_Primary_Function"]]
+          ], "#facc15",
+          ["in", "Port", ["get", "NavAid_Primary_Function"]], "#ef4444",
+          ["in", "Starboard", ["get", "NavAid_Primary_Function"]], "#16a34a",
+          "#2563eb"
+        ] as unknown;
+        m.setPaintProperty(LAYER_ID, "circle-color", autoExpr);
+      } else {
+        m.setPaintProperty(LAYER_ID, "circle-color", "#facc15");
+      }
+    };
+    apply();
+    m.on("styledata", apply);
+    return () => {
+      m.off("styledata", apply);
+    };
+  }, [colorMode]);
+
   // High-accuracy tracking toggle
   useEffect(() => {
     const map = mapRef.current;
@@ -397,6 +431,7 @@ export default function MapPage() {
   watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
+    userPosRef.current = { lon: longitude, lat: latitude };
         let marker = userMarkerRef.current;
         if (!marker) {
           const el = document.createElement("div");
@@ -412,14 +447,17 @@ export default function MapPage() {
         } else {
           marker.setLngLat([longitude, latitude]);
         }
-        // On the first fix after enabling, also zoom in to at least 16
+        // On the first fix after enabling, also zoom in closer (at least 17)
         if (firstFixRef.current) {
           const currentZoom = map.getZoom ? map.getZoom() : 0;
-          const targetZoom = Math.max(16, Number.isFinite(currentZoom) ? currentZoom : 0);
+          const targetZoom = Math.max(17, Number.isFinite(currentZoom) ? currentZoom : 0);
           map.easeTo({ center: [longitude, latitude], zoom: targetZoom, duration: 600 });
           firstFixRef.current = false;
         } else {
-          map.easeTo({ center: [longitude, latitude], duration: 500 });
+          const currentZoom = map.getZoom ? map.getZoom() : 0;
+          const minTrackingZoom = 17; // suburb-level
+          const targetZoom = Number.isFinite(currentZoom) && currentZoom >= minTrackingZoom ? currentZoom : minTrackingZoom;
+          map.easeTo({ center: [longitude, latitude], zoom: targetZoom, duration: 500 });
         }
         setAccuracy(Number.isFinite(accuracy) ? Math.round(accuracy) : null);
         // Update accuracy circle layer
@@ -480,6 +518,35 @@ export default function MapPage() {
       watchIdRef.current = null;
     };
   }, [tracking]);
+
+  // One-shot recenter helper bound to the button
+  const recenterToUser = () => {
+    const m = mapRef.current;
+    if (!m) return;
+    const pos = userPosRef.current;
+    if (pos) {
+      const currentZoom = m.getZoom ? m.getZoom() : 0;
+      const targetZoom = Math.max(17, Number.isFinite(currentZoom) ? currentZoom : 0);
+      m.easeTo({ center: [pos.lon, pos.lat], zoom: targetZoom, duration: 600 });
+      return;
+    }
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (p) => {
+          const { latitude, longitude } = p.coords;
+          userPosRef.current = { lon: longitude, lat: latitude };
+          const currentZoom = m.getZoom ? m.getZoom() : 0;
+          const targetZoom = Math.max(17, Number.isFinite(currentZoom) ? currentZoom : 0);
+          m.easeTo({ center: [longitude, latitude], zoom: targetZoom, duration: 600 });
+        },
+        (err) => {
+          const msg = err?.message || String(err);
+          setError(/denied/i.test(msg) ? "Location permission denied." : "Unable to get location.");
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    }
+  };
 
   // Keyboard: allow closing modal with Escape
   useEffect(() => {
@@ -631,6 +698,20 @@ export default function MapPage() {
             }`}
           >
             {tracking ? "Disable" : "Enable"} tracking
+          </button>
+          <button
+            onClick={recenterToUser}
+            className="px-3 py-1.5 rounded border text-sm bg-white border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200 dark:hover:bg-neutral-700"
+            title="Center on my location"
+          >
+            Locate me
+          </button>
+          <button
+            onClick={() => setColorMode((m) => (m === "auto" ? "amber" : "auto"))}
+            className="px-3 py-1.5 rounded border text-sm bg-white border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200 dark:hover:bg-neutral-700"
+            title="Toggle asset colors"
+          >
+            Colors: {colorMode === "auto" ? "Auto" : "Amber"}
           </button>
           {tracking && (
             <span className="text-sm px-2 py-1 rounded bg-white border border-gray-300 text-gray-700 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200">

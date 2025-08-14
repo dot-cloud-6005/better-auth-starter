@@ -70,7 +70,17 @@ export function LoginForm({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: values.email }),
       });
-      if (!res.ok) throw new Error("Failed to send code");
+      if (!res.ok) {
+        let msg = "Failed to send code";
+        try {
+          const data = await res.json();
+          if (data?.message) msg = data.message;
+        } catch {
+          const text = await res.text();
+          if (text) msg = text;
+        }
+        throw new Error(msg);
+      }
       setEmail(values.email);
       setStep("verify");
       toast.success("We sent you a 6-digit code.");

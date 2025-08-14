@@ -127,6 +127,18 @@ export const auth = betterAuth({
                     throw new APIError(429, { message: "Too many requests. Please try again shortly." });
                 }
 
+                // If sign-ups are disabled, only allow OTP for existing users
+                const existingUser = await adapter.findOne<{ id: string } | null>({
+                    model: "user",
+                    where: [{ field: "email", operator: "eq", value: email }],
+                });
+                if (!existingUser) {
+                    const allowed = await getAllowSignups();
+                    if (!allowed) {
+                        throw new APIError(403, { message: "Sign-ups are currently disabled." });
+                    }
+                }
+
                 // Generate 6-digit code
                 const code = Math.floor(100000 + Math.random() * 900000)
                     .toString();
