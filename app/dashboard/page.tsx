@@ -1,13 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { getOrganizations } from "@/server/organizations";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { CreateOrgDialog } from "./create-org-dialog.client";
 
 export default async function Dashboard() {
   const organizations = await getOrganizations();
   // Use the first org as active context for the quick link tile
-  const firstOrg = organizations[0];
 
   const hasOrgs = organizations.length > 0;
 

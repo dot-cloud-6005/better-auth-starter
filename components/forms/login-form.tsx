@@ -27,7 +27,6 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
-import { authClient } from "@/lib/auth-client";
 import Link from "next/link";
 
 const requestSchema = z.object({
