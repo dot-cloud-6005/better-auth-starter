@@ -3,7 +3,7 @@ import { InviteByEmailForm } from "@/components/forms/invite-by-email-form";
 import InvitationsTable from "@/components/invitations-table";
 import { getOrganizationBySlug, getInvitationsByOrgId } from "@/server/organizations";
 import { getCurrentUser } from "@/server/users";
-import { CreateOrgDialog } from "@/app/dashboard/create-org-dialog.client";
+import { CreateOrgDialog } from "@/components/create-org-dialog.client";
 import { redirect } from "next/navigation";
 
 type Params = Promise<{ slug: string }>;

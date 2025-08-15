@@ -16,7 +16,7 @@ export async function Header() {
     ? `/${activeOrg.slug}/nav-map`
     : organizations[0]?.slug
     ? `/${organizations[0].slug}/nav-map`
-    : "/dashboard";
+  : "/landing";
 
   return (
     <header className="fixed top-0 inset-x-0 z-50 h-16 flex justify-between items-center px-4 bg-white/80 dark:bg-neutral-900/80 backdrop-blur border-b border-gray-200 dark:border-neutral-800">

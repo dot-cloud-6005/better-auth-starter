@@ -20,6 +20,14 @@ export async function middleware(request: NextRequest) {
         pathname.startsWith("/public") ||
         isAsset;
 
+    // Redirect any legacy /dashboard paths to /landing
+    if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
+        const url = new URL("/landing", request.url);
+        // preserve query string
+        for (const [k, v] of request.nextUrl.searchParams.entries()) url.searchParams.set(k, v);
+        return NextResponse.redirect(url);
+    }
+
     const sessionCookie = getSessionCookie(request);
 
     let response: NextResponse;

@@ -98,7 +98,7 @@ async function toggleSignupsAction(formData: FormData) {
 
 export default async function SuperAdminPage() {
   const allowed = await isMasterAdmin();
-  if (!allowed) redirect("/dashboard");
+  if (!allowed) redirect("/landing");
 
   const users = await getAllUsers();
   const orgs = await getAllOrganizationsWithMembers();
@@ -120,7 +120,7 @@ export default async function SuperAdminPage() {
       </Card>
 
       <Card className="p-4">
-        <h2 className="text-xl font-semibold mb-3">Create Organization</h2>
+        <h2 className="text-xl font-semibold mb-3">Create Organisation</h2>
         <form action={createOrgAction} className="flex flex-col gap-3 max-w-md">
           <div className="grid gap-1.5">
             <Label htmlFor="org-name">Name</Label>
@@ -131,26 +131,26 @@ export default async function SuperAdminPage() {
             <Input id="org-slug" name="slug" placeholder="acme" required />
           </div>
           <div>
-            <Button type="submit">Create organization</Button>
+            <Button type="submit">Create organisation</Button>
           </div>
         </form>
       </Card>
 
       <Card className="p-4">
-        <h2 className="text-xl font-semibold mb-3">Organizations</h2>
+        <h2 className="text-xl font-semibold mb-3">Organisations</h2>
         {!orgs.length ? (
-          <p className="text-sm text-muted-foreground">No organizations.</p>
+          <p className="text-sm text-muted-foreground">No organisations.</p>
         ) : (
           <Accordion type="single" collapsible className="w-full">
             {orgs.map((o) => (
               <AccordionItem key={o.id} value={o.id}>
                 <AccordionTrigger value={o.id} className="text-left">
-                  <div className="flex items-center justify-between w-full">
-                    <div>
-                      <div className="font-medium">{o.name}</div>
-                      <div className="text-xs text-muted-foreground">{o.slug || "(no slug)"}</div>
+                  <div className="flex w-full items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{o.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{o.slug || "(no slug)"}</div>
                     </div>
-                    <div className="text-xs text-muted-foreground">{o.members?.length || 0} members</div>
+                    <div className="shrink-0 text-xs text-muted-foreground whitespace-nowrap">{o.members?.length || 0} members</div>
                   </div>
                 </AccordionTrigger>
                 <AccordionContent value={o.id}>
@@ -236,7 +236,7 @@ export default async function SuperAdminPage() {
                   <div className="mt-6 border-t pt-4">
                     <form action={deleteOrgAction} className="flex items-center justify-end">
                       <input type="hidden" name="orgId" value={o.id} />
-                      <Button type="submit" variant="destructive">Delete organization</Button>
+                      <Button type="submit" variant="destructive">Delete organisation</Button>
                     </form>
                   </div>
                 </AccordionContent>

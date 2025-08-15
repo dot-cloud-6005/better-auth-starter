@@ -65,7 +65,7 @@ export function AccordionTrigger({ value, className, children }: React.PropsWith
       aria-expanded={isOpen}
       aria-controls={`content-${v}`}
     >
-      <span>{children}</span>
+  {children}
       <svg
         className={cn("h-4 w-4 transition-transform", isOpen ? "rotate-180" : "rotate-0")}
         viewBox="0 0 20 20"

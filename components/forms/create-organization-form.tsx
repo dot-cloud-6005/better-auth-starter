@@ -49,7 +49,7 @@ export function CreateOrganizationForm({
       });
 
       if (error) {
-        throw new Error(error.message ?? "Failed to create organization");
+        throw new Error(error.message ?? "Failed to create organisation");
       }
 
       // Safely extract id and slug from either data.organization or data itself
@@ -63,11 +63,11 @@ export function CreateOrganizationForm({
         if (maybeOrg?.slug) slug = maybeOrg.slug;
       }
 
-      toast.success("Organization created successfully");
+      toast.success("Organisation created successfully");
       onSuccess?.({ id: orgId, slug });
     } catch (error) {
       console.error(error);
-      toast.error("Failed to create organization");
+      toast.error("Failed to create organisation");
     } finally {
       setIsLoading(false);
     }
@@ -83,7 +83,7 @@ export function CreateOrganizationForm({
             <FormItem>
               <FormLabel>Name</FormLabel>
               <FormControl>
-                <Input placeholder="My Organization" {...field} />
+                <Input placeholder="My Organisation" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -108,7 +108,7 @@ export function CreateOrganizationForm({
           {isLoading ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
-            "Create Organization"
+            "Create Organisation"
           )}
         </Button>
       </form>
