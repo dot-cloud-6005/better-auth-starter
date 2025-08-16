@@ -277,3 +277,41 @@ export async function deleteItem(itemId: string, organizationId: string) {
   
   return { success: true } as const;
 }
+
+/**
+ * Get a single storage item if the current user is allowed to access it.
+ * Returns null when not found or access is denied.
+ */
+export async function getItemIfAllowed(
+  organizationId: string,
+  itemId: string,
+  userId?: string
+) {
+  await assertOrgAccess(organizationId);
+  // Resolve user id if not provided
+  let uid = userId;
+  if (!uid) {
+    const session = await auth.api.getSession({ headers: await headers() });
+    uid = session?.user.id;
+  }
+  if (!uid) return null;
+
+  const item = await db.query.storageItem.findFirst({
+    where: and(eq(storageItem.id, itemId), eq(storageItem.organizationId, organizationId)),
+  });
+
+  if (!item) return null;
+
+  // Visibility checks
+  if (item.visibility === "org") return item;
+
+  if (item.visibility === "private") {
+    return item.ownerUserId === uid ? item : null;
+  }
+
+  // custom visibility => check explicit permission
+  const perm = await db.query.storagePermission.findFirst({
+    where: and(eq(storagePermission.itemId, itemId), eq(storagePermission.userId, uid)),
+  });
+  return perm ? item : null;
+}

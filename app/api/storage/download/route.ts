@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { listItems } from "@/server/storage";
+import { getItemIfAllowed } from "@/server/storage";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { getSupabaseAdmin, getSupabaseBucket } from '@/lib/supabase';
@@ -70,9 +70,8 @@ export async function GET(req: NextRequest) {
       return new Response('Rate limit exceeded', { status: 429 });
     }
 
-    // First check through proper permission system
-    const items = await listItems(orgId, undefined, userId);
-    const allowedItem = items.find(i => i.id === itemId);
+  // Check access for this specific item (works for nested items too)
+  const allowedItem = await getItemIfAllowed(orgId, itemId, userId);
     
     if (!allowedItem) {
       // Log access denied - item not found or no permission
