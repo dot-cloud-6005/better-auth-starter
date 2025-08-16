@@ -6,6 +6,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { formatDateToDDMMYYYY } from "@/lib/utils";
 
 interface InvitationRow {
   id: string;
@@ -49,6 +50,7 @@ export default function InvitationsTable({ invitations }: { invitations: Invitat
             <span className="font-medium">{inv.email}</span>
             <span className="text-xs text-muted-foreground">
               {inv.role || "member"} · {inv.status}
+              {inv.expiresAt && ` · expires ${formatDateToDDMMYYYY(inv.expiresAt)}`}
             </span>
           </div>
           <Button

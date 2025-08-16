@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import {
   Select,
   SelectContent,
@@ -19,9 +20,42 @@ interface OrganizationSwitcherProps {
 export function OrganizationSwitcher({
   organizations,
 }: OrganizationSwitcherProps) {
-  const { data: activeOrganization } = authClient.useActiveOrganization();
+  const [isClient, setIsClient] = React.useState(false);
+  
+  // Only run on client side to prevent hydration issues
+  React.useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const { data: activeOrganization, isPending, error } = authClient.useActiveOrganization();
   const router = useRouter();
   const pathname = usePathname();
+
+  // Don't render the hook-dependent parts until we're on the client side
+  if (!isClient || isPending) {
+    return (
+      <Select disabled>
+        <SelectTrigger className="w-[180px]">
+          <SelectValue placeholder={isPending ? "Loading..." : "Select Organisation"} />
+        </SelectTrigger>
+        <SelectContent>
+        </SelectContent>
+      </Select>
+    );
+  }
+
+  if (error) {
+    console.error("OrganizationSwitcher error:", error);
+    return (
+      <Select disabled>
+        <SelectTrigger className="w-[180px]">
+          <SelectValue placeholder="Error loading" />
+        </SelectTrigger>
+        <SelectContent>
+        </SelectContent>
+      </Select>
+    );
+  }
 
   const handleChangeOrganization = async (organizationId: string) => {
     try {
@@ -53,7 +87,7 @@ export function OrganizationSwitcher({
   return (
     <Select
       onValueChange={handleChangeOrganization}
-      value={activeOrganization?.id}
+      value={activeOrganization?.id || ""}
     >
       <SelectTrigger className="w-[180px]">
         <SelectValue placeholder="Select Organisation" />
