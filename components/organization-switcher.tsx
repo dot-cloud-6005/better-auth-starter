@@ -65,7 +65,7 @@ export function OrganizationSwitcher({
 
       if (error) {
         console.error(error);
-        toast.error("Failed to switch organization");
+        toast.error("Failed to switch organisation");
         return;
       }
 
@@ -77,10 +77,10 @@ export function OrganizationSwitcher({
       } else {
         router.refresh();
       }
-      toast.success("Organization switched successfully");
+      toast.success("Organisation switched successfully");
     } catch (error) {
       console.error(error);
-      toast.error("Failed to switch organization");
+      toast.error("Failed to switch organisation");
     }
   };
 

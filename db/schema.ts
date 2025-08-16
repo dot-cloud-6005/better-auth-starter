@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { boolean, pgSchema, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, pgSchema, text, timestamp, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { integer, doublePrecision, numeric } from "drizzle-orm/pg-core";
 
 // Use a dedicated Postgres schema named "drizzle" instead of public
@@ -144,6 +144,43 @@ export const navigationAssets = navigation.table("assets", {
 
 export type NavigationAsset = typeof navigationAssets.$inferSelect;
 
+// Storage schema: folders/files with simple ACLs
+export const storageVisibility = appSchema.enum("storage_visibility", [
+    "org",
+    "private",
+    "custom",
+]);
+
+export const storageItem = appSchema.table("storage_item", {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+        .notNull()
+        .references(() => organization.id, { onDelete: "cascade" }),
+    // Note: self-referential FK exists in the DB migration; omit here to avoid circular type inference
+    parentId: text("parent_id"),
+    name: text("name").notNull(),
+    type: text("type").notNull(), // 'folder' | 'file'
+    ownerUserId: text("owner_user_id")
+        .notNull()
+        .references(() => user.id, { onDelete: "cascade" }),
+    mimeType: text("mime_type"),
+    size: integer("size"),
+    storagePath: text("storage_path"),
+    visibility: storageVisibility("visibility").default("org").notNull(),
+    createdAt: timestamp("created_at").$defaultFn(() => /* @__PURE__ */ new Date()).notNull(),
+    updatedAt: timestamp("updated_at").$defaultFn(() => /* @__PURE__ */ new Date()).notNull(),
+});
+
+export const storagePermission = appSchema.table("storage_permission", {
+    id: text("id").primaryKey(),
+    itemId: text("item_id")
+        .notNull()
+        .references(() => storageItem.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+        .notNull()
+        .references(() => user.id, { onDelete: "cascade" }),
+});
+
 export const schema = {
   user,
   session,
@@ -156,5 +193,8 @@ export const schema = {
   memberRelations,
   navigationAssets,
   navigation,
+    storageVisibility,
+    storageItem,
+    storagePermission,
 };
 export type AppSchema = typeof schema;
