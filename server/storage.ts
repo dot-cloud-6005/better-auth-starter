@@ -6,6 +6,7 @@ import { eq, and, isNull, or, inArray } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { randomUUID } from "node:crypto";
+import { validateStorageInput, createAuditLog, StorageAuditAction, sanitizeFilename } from "@/lib/security";
 
 export type VisibilityOption = "org" | "private" | "custom";
 
@@ -91,30 +92,65 @@ export async function listItems(organizationId: string, parentId?: string | null
 
 export async function createFolder(input: NewFolderInput, ownerUserId: string) {
   await assertOrgAccess(input.organizationId);
+  
+  // Validate input
+  const validation = validateStorageInput(input);
+  if (!validation.isValid) {
+    throw new Error(`Invalid input: ${validation.errors.join(', ')}`);
+  }
+  
+  // Sanitize folder name
+  const sanitizedName = sanitizeFilename(input.name);
+  
   const id = randomUUID();
   await db.insert(storageItem).values({
     id,
     organizationId: input.organizationId,
     parentId: input.parentId ?? null,
-    name: input.name,
+    name: sanitizedName,
     type: "folder",
     ownerUserId,
     visibility: input.visibility,
   });
+  
   if (input.visibility === "custom" && input.userIds?.length) {
-    await db.insert(storagePermission).values(input.userIds.map(uid => ({ id: randomUUID(), itemId: id, userId: uid })));
+    await db.insert(storagePermission).values(
+      input.userIds.map(uid => ({ 
+        id: randomUUID(), 
+        itemId: id, 
+        userId: uid 
+      }))
+    );
   }
+  
+  // Create audit log
+  createAuditLog(StorageAuditAction.FOLDER_CREATE, ownerUserId, input.organizationId, id, {
+    name: sanitizedName,
+    visibility: input.visibility,
+    userIds: input.userIds
+  });
+  
   return { id };
 }
 
 export async function createFile(input: NewFileInput, ownerUserId: string) {
   await assertOrgAccess(input.organizationId);
+  
+  // Validate input
+  const validation = validateStorageInput(input);
+  if (!validation.isValid) {
+    throw new Error(`Invalid input: ${validation.errors.join(', ')}`);
+  }
+  
+  // Sanitize filename
+  const sanitizedName = sanitizeFilename(input.name);
+  
   const id = randomUUID();
   await db.insert(storageItem).values({
     id,
     organizationId: input.organizationId,
     parentId: input.parentId ?? null,
-    name: input.name,
+    name: sanitizedName,
     type: "file",
     ownerUserId,
     mimeType: input.mimeType,
@@ -122,30 +158,122 @@ export async function createFile(input: NewFileInput, ownerUserId: string) {
     storagePath: input.storagePath,
     visibility: input.visibility,
   });
+  
   if (input.visibility === "custom" && input.userIds?.length) {
-    await db.insert(storagePermission).values(input.userIds.map(uid => ({ id: randomUUID(), itemId: id, userId: uid })));
+    await db.insert(storagePermission).values(
+      input.userIds.map(uid => ({ 
+        id: randomUUID(), 
+        itemId: id, 
+        userId: uid 
+      }))
+    );
   }
+  
   return { id };
 }
 
 export async function updateVisibility(itemId: string, visibility: VisibilityOption, userIds: string[] | undefined, organizationId: string) {
   await assertOwnerOrAdmin(itemId, organizationId);
+  
+  // Validate input
+  const validation = validateStorageInput({ 
+    organizationId, 
+    visibility,
+    itemId 
+  });
+  if (!validation.isValid) {
+    throw new Error(`Invalid input: ${validation.errors.join(', ')}`);
+  }
+  
+  // Get current user for audit log
+  const session = await auth.api.getSession({ headers: await headers() });
+  const currentUserId = session?.user.id;
+  
   await db.update(storageItem).set({ visibility }).where(eq(storageItem.id, itemId));
   await db.delete(storagePermission).where(eq(storagePermission.itemId, itemId));
+  
   if (visibility === "custom" && userIds?.length) {
-    await db.insert(storagePermission).values(userIds.map(uid => ({ id: randomUUID(), itemId, userId: uid })));
+    await db.insert(storagePermission).values(
+      userIds.map(uid => ({ 
+        id: randomUUID(), 
+        itemId, 
+        userId: uid 
+      }))
+    );
   }
+  
+  // Create audit log
+  if (currentUserId) {
+    createAuditLog(StorageAuditAction.PERMISSION_CHANGE, currentUserId, organizationId, itemId, {
+      newVisibility: visibility,
+      userIds: userIds
+    });
+  }
+  
   return { success: true } as const;
 }
 
 export async function renameItem(itemId: string, name: string, organizationId: string) {
   await assertOwnerOrAdmin(itemId, organizationId);
-  await db.update(storageItem).set({ name }).where(eq(storageItem.id, itemId));
+  
+  // Validate and sanitize name
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    throw new Error('Invalid name provided');
+  }
+  
+  const sanitizedName = sanitizeFilename(name);
+  
+  // Get current user for audit log
+  const session = await auth.api.getSession({ headers: await headers() });
+  const currentUserId = session?.user.id;
+  
+  await db.update(storageItem).set({ name: sanitizedName }).where(eq(storageItem.id, itemId));
+  
+  // Create audit log
+  if (currentUserId) {
+    createAuditLog(StorageAuditAction.FILE_RENAME, currentUserId, organizationId, itemId, {
+      oldName: name,
+      newName: sanitizedName
+    });
+  }
+  
   return { success: true } as const;
 }
 
 export async function deleteItem(itemId: string, organizationId: string) {
   await assertOwnerOrAdmin(itemId, organizationId);
+  
+  // Get current user and item info for audit log
+  const session = await auth.api.getSession({ headers: await headers() });
+  const currentUserId = session?.user.id;
+  
+  // Get item info before deletion
+  const item = await db.query.storageItem.findFirst({ 
+    where: eq(storageItem.id, itemId) 
+  });
+  
+  if (!item) {
+    throw new Error('Item not found');
+  }
+  
+  // Delete item and associated permissions
+  await db.delete(storagePermission).where(eq(storagePermission.itemId, itemId));
   await db.delete(storageItem).where(eq(storageItem.id, itemId));
+  
+  // Create audit log
+  if (currentUserId) {
+    createAuditLog(
+      item.type === 'folder' ? StorageAuditAction.FOLDER_DELETE : StorageAuditAction.FILE_DELETE, 
+      currentUserId, 
+      organizationId, 
+      itemId, 
+      {
+        itemName: item.name,
+        itemType: item.type,
+        storagePath: item.storagePath
+      }
+    );
+  }
+  
   return { success: true } as const;
 }

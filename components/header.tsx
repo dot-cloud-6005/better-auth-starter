@@ -1,6 +1,6 @@
 import { Logout } from "./logout";
 import { ModeSwitcher } from "./mode-switcher";
-import { OrganizationSwitcher } from "./organization-switcher";
+import { OptimizedOrganizationSwitcher } from "./organization-switcher-optimized";
 import { getActiveOrganization, getOrganizations } from "@/server/organizations";
 import Link from "next/link";
 import { getCurrentUser, isMasterAdmin } from "@/server/users";
@@ -22,7 +22,7 @@ export async function Header() {
     <header className="fixed top-0 inset-x-0 z-50 h-16 flex justify-between items-center px-4 bg-white/80 dark:bg-neutral-900/80 backdrop-blur border-b border-gray-200 dark:border-neutral-800">
       {/* Left: Org switcher (desktop) */}
       <div className="hidden sm:block">
-        <OrganizationSwitcher organizations={organizations} />
+        <OptimizedOrganizationSwitcher organizations={organizations} />
       </div>
 
       {/* Center spacer/title on mobile */}
@@ -87,7 +87,7 @@ export async function Header() {
 
               {/* Mobile: org switcher */}
               <div className="sm:hidden mb-3">
-                <OrganizationSwitcher organizations={organizations} />
+                <OptimizedOrganizationSwitcher organizations={organizations} />
               </div>
 
               {/* Nav items */}

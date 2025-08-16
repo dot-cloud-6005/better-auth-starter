@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -24,7 +24,6 @@ import {
 } from '@/components/ui/select';
 import {
   FolderIcon,
-  FileIcon,
   PlusIcon,
   UploadIcon,
   HomeIcon,
@@ -40,7 +39,9 @@ import {
   InfoIcon,
   MenuIcon,
   XIcon,
+  Loader2,
 } from 'lucide-react';
+import { getFileTypeIcon, getFileTypeColor } from '@/lib/file-icons';
 
 export type StorageItem = {
   id: string;
@@ -94,6 +95,10 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
   const [uploadVis, setUploadVis] = useState<'org'|'private'|'custom'>("org");
   const [uploadSelectedIds, setUploadSelectedIds] = useState<string[]>([]);
   const [newItemName, setNewItemName] = useState("");
+  
+  // Loading states for operations
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [renamingItem, setRenamingItem] = useState(false);
 
   const parentId = stack[stack.length - 1]?.id ?? null;
 
@@ -133,6 +138,23 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
       setLoading(false);
     }
   };
+
+  // Optimistic update helpers
+  const addItemOptimistically = useCallback((newItem: StorageItem) => {
+    setItems(current => [...current, newItem]);
+  }, []);
+
+  const updateItemOptimistically = useCallback((itemId: string, updates: Partial<StorageItem>) => {
+    setItems(current => 
+      current.map(item => 
+        item.id === itemId ? { ...item, ...updates } : item
+      )
+    );
+  }, []);
+
+  const removeItemOptimistically = useCallback((itemId: string) => {
+    setItems(current => current.filter(item => item.id !== itemId));
+  }, []);
 
   // Filter and sort items
   useEffect(() => {
@@ -184,21 +206,60 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
       toast.error('Folder name is required');
       return;
     }
-    const userIds = newFolderVis === 'custom' ? selectedMemberIds : undefined;
-    const res = await fetch('/api/storage/folder', { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
-      credentials: 'include', 
-      body: JSON.stringify({ organizationId, parentId, name, visibility: newFolderVis, userIds }) 
-    });
-    const data = await res.json();
-    if (!res.ok) return toast.error(data.error || 'Failed to create folder');
-    toast.success('Folder created');
-    setCreateOpen(false);
-    setNewFolderName("");
-    setSelectedMemberIds([]);
-    setNewFolderVis('org');
-    refresh();
+    
+    setCreatingFolder(true);
+    
+    // Create optimistic folder item
+    const tempId = `temp-${Date.now()}`;
+    const optimisticFolder: StorageItem = {
+      id: tempId,
+      name,
+      type: 'folder',
+      parentId,
+      organizationId,
+      ownerUserId: 'current-user', // TODO: Get actual user ID
+      size: 0,
+      mimeType: null,
+      visibility: newFolderVis,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    // Add optimistically
+    addItemOptimistically(optimisticFolder);
+    
+    try {
+      const userIds = newFolderVis === 'custom' ? selectedMemberIds : undefined;
+      const res = await fetch('/api/storage/folder', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        credentials: 'include', 
+        body: JSON.stringify({ organizationId, parentId, name, visibility: newFolderVis, userIds }) 
+      });
+      const data = await res.json();
+      
+      if (!res.ok) {
+        // Remove optimistic item on error
+        removeItemOptimistically(tempId);
+        toast.error(data.error || 'Failed to create folder');
+        return;
+      }
+      
+      // Replace optimistic item with real data
+      updateItemOptimistically(tempId, { id: data.folder.id });
+      
+      toast.success('Folder created');
+      setCreateOpen(false);
+      setNewFolderName("");
+      setSelectedMemberIds([]);
+      setNewFolderVis('org');
+    } catch (error) {
+      // Remove optimistic item on error
+      removeItemOptimistically(tempId);
+      toast.error('Failed to create folder');
+    } finally {
+      setCreatingFolder(false);
+    }
   };
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -254,18 +315,40 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
       return;
     }
     
-    const res = await fetch('/api/storage/rename', { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
-      credentials: 'include', 
-      body: JSON.stringify({ itemId: renameOpenFor.id, name, organizationId }) 
-    });
-    const data = await res.json();
-    if (!res.ok) return toast.error(data.error || 'Failed to rename');
-    toast.success('Renamed successfully');
-    setRenameOpenFor(null);
-    setNewItemName("");
-    refresh();
+    setRenamingItem(true);
+    
+    // Store original name for rollback
+    const originalName = renameOpenFor.name;
+    
+    // Update optimistically
+    updateItemOptimistically(renameOpenFor.id, { name });
+    
+    try {
+      const res = await fetch('/api/storage/rename', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        credentials: 'include', 
+        body: JSON.stringify({ itemId: renameOpenFor.id, name, organizationId }) 
+      });
+      const data = await res.json();
+      
+      if (!res.ok) {
+        // Rollback on error
+        updateItemOptimistically(renameOpenFor.id, { name: originalName });
+        toast.error(data.error || 'Failed to rename');
+        return;
+      }
+      
+      toast.success('Renamed successfully');
+      setRenameOpenFor(null);
+      setNewItemName("");
+    } catch (error) {
+      // Rollback on error
+      updateItemOptimistically(renameOpenFor.id, { name: originalName });
+      toast.error('Failed to rename');
+    } finally {
+      setRenamingItem(false);
+    }
   };
 
   const showInfo = (item: StorageItem) => {
@@ -343,7 +426,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-2 sm:p-4 lg:p-6">
+    <div className="min-h-screen bg-background p-2 sm:p-4 lg:p-6">
       <div className="max-w-7xl mx-auto space-y-3 sm:space-y-4 lg:space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -351,31 +434,31 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
               Storage
             </h1>
-            <p className="text-slate-600 mt-1 text-sm sm:text-base">Organise and share your files</p>
+            <p className="text-muted-foreground mt-1 text-sm sm:text-base">Organise and share your files</p>
           </div>
         </div>
 
         {/* Navigation Breadcrumbs */}
-        <Card className="p-3 sm:p-4 shadow-sm border-0 bg-white/70 backdrop-blur-sm">
+  <Card className="p-3 sm:p-4 shadow-sm border bg-card/70 backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-1 sm:space-x-2 overflow-x-auto flex-1 min-w-0">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setStack([{ id: null, name: 'Home' }])}
-                className="hover:bg-blue-100 shrink-0"
+                className="shrink-0"
               >
                 <HomeIcon className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Home</span>
               </Button>
               {stack.slice(1).map((folder, i) => (
                 <div key={folder.id} className="flex items-center shrink-0">
-                  <ChevronRightIcon className="h-3 w-3 sm:h-4 sm:w-4 text-slate-400" />
+                  <ChevronRightIcon className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setStack(stack.slice(0, i + 2))}
-                    className="hover:bg-blue-100 max-w-[120px] sm:max-w-none"
+                    className="max-w-[120px] sm:max-w-none"
                   >
                     <span className="truncate text-xs sm:text-sm">{folder.name}</span>
                   </Button>
@@ -385,7 +468,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
             
             <div className="flex items-center space-x-1 sm:space-x-2 ml-2">
               {/* View Mode Toggle */}
-              <div className="flex items-center border rounded-lg p-1 bg-slate-100">
+              <div className="flex items-center border rounded-lg p-1 bg-muted">
                 <Button
                   variant={viewMode === 'grid' ? 'default' : 'ghost'}
                   size="sm"
@@ -408,7 +491,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
         </Card>
 
         {/* Toolbar */}
-        <Card className="p-3 sm:p-4 shadow-sm border-0 bg-white/70 backdrop-blur-sm">
+  <Card className="p-3 sm:p-4 shadow-sm border bg-card/70 backdrop-blur-sm">
           <div className="space-y-3 sm:space-y-4">
             {/* Mobile Menu Toggle */}
             <div className="flex items-center justify-between lg:hidden">
@@ -424,21 +507,24 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
               
               <div className="flex items-center space-x-2">
                 {selectedItems.size > 0 && (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => deleteItems(Array.from(selectedItems))}
-                    className="shadow-sm h-9"
-                  >
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => deleteItems(Array.from(selectedItems))}
+                      className="shadow-sm h-9"
+                    >
                     <Trash2Icon className="h-4 w-4 sm:mr-2" />
                     <span className="hidden sm:inline">Delete ({selectedItems.size})</span>
                     <span className="sm:hidden">({selectedItems.size})</span>
                   </Button>
                 )}
 
-                <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                <Dialog open={createOpen} onOpenChange={(open) => {
+                  setCreateOpen(open);
+                  if (!open) setCreatingFolder(false);
+                }}>
                   <DialogTrigger asChild>
-                    <Button className="shadow-sm bg-blue-600 hover:bg-blue-700 h-9">
+                    <Button className="shadow-sm h-9">
                       <PlusIcon className="h-4 w-4 sm:mr-2" />
                       <span className="hidden sm:inline">New Folder</span>
                     </Button>
@@ -449,18 +535,18 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                       <div>
-                        <label className="text-sm font-medium text-slate-700 mb-2 block">Folder Name</label>
+                        <label className="text-sm font-medium text-foreground mb-2 block">Folder Name</label>
                         <Input 
                           value={newFolderName} 
                           onChange={(e) => setNewFolderName(e.target.value)} 
                           placeholder="Enter folder name"
-                          className="border-slate-200 focus:border-blue-500"
+                          className=""
                         />
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-slate-700 mb-2 block">Visibility</label>
+                        <label className="text-sm font-medium text-foreground mb-2 block">Visibility</label>
                         <Select value={newFolderVis} onValueChange={(v: 'org'|'private'|'custom') => setNewFolderVis(v)}>
-                          <SelectTrigger className="border-slate-200 focus:border-blue-500">
+                          <SelectTrigger className="border-border">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -472,8 +558,8 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                       </div>
                       {newFolderVis === 'custom' && (
                         <div>
-                          <label className="text-sm font-medium text-slate-700 mb-3 block">Select Members</label>
-                          <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-3 bg-slate-50">
+                          <label className="text-sm font-medium text-foreground mb-3 block">Select Members</label>
+                          <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-3 bg-muted">
                             {members.map(member => (
                               <div key={member.id} className="flex items-center space-x-3">
                                 <Checkbox
@@ -487,8 +573,8 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                                   }}
                                 />
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-slate-900">{member.name || 'Unnamed User'}</p>
-                                  <p className="text-xs text-slate-500 truncate">{member.email}</p>
+                                  <p className="text-sm font-medium text-foreground">{member.name || 'Unnamed User'}</p>
+                                  <p className="text-xs text-muted-foreground truncate">{member.email}</p>
                                 </div>
                               </div>
                             ))}
@@ -500,8 +586,9 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                       <Button variant="outline" onClick={() => setCreateOpen(false)}>
                         Cancel
                       </Button>
-                      <Button onClick={submitCreateFolder} className="bg-blue-600 hover:bg-blue-700">
-                        Create Folder
+                      <Button onClick={submitCreateFolder} disabled={creatingFolder}>
+                        {creatingFolder && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {creatingFolder ? 'Creating...' : 'Create Folder'}
                       </Button>
                     </DialogFooter>
                   </DialogContent>
@@ -509,7 +596,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
 
                 <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" className="shadow-sm border-blue-200 hover:bg-blue-50 h-9">
+        <Button variant="outline" className="shadow-sm h-9">
                       <UploadIcon className="h-4 w-4 sm:mr-2" />
                       <span className="hidden sm:inline">Upload File</span>
                     </Button>
@@ -520,9 +607,9 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                       <div>
-                        <label className="text-sm font-medium text-slate-700 mb-2 block">Visibility</label>
+      <label className="text-sm font-medium text-foreground mb-2 block">Visibility</label>
                         <Select value={uploadVis} onValueChange={(v: 'org'|'private'|'custom') => setUploadVis(v)}>
-                          <SelectTrigger className="border-slate-200 focus:border-blue-500">
+        <SelectTrigger className="border-border">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -534,8 +621,8 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                       </div>
                       {uploadVis === 'custom' && (
                         <div>
-                          <label className="text-sm font-medium text-slate-700 mb-3 block">Select Members</label>
-                          <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-3 bg-slate-50">
+        <label className="text-sm font-medium text-foreground mb-3 block">Select Members</label>
+        <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-3 bg-muted">
                             {members.map(member => (
                               <div key={member.id} className="flex items-center space-x-3">
                                 <Checkbox
@@ -549,8 +636,8 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                                   }}
                                 />
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-slate-900">{member.name || 'Unnamed User'}</p>
-                                  <p className="text-xs text-slate-500 truncate">{member.email}</p>
+          <p className="text-sm font-medium text-foreground">{member.name || 'Unnamed User'}</p>
+          <p className="text-xs text-muted-foreground truncate">{member.email}</p>
                                 </div>
                               </div>
                             ))}
@@ -561,7 +648,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                         <input
                           type="file"
                           onChange={onUpload}
-                          className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+        className="w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-accent file:text-accent-foreground hover:file:bg-accent/80"
                         />
                       </div>
                     </div>
@@ -575,21 +662,22 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
               <div className="flex items-center space-x-4 flex-1">
                 {/* Search */}
                 <div className="relative min-w-[300px]">
-                  <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
+                  <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                   <Input
                     placeholder="Search files and folders..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 bg-white border-slate-200 focus:border-blue-500"
+                    className="pl-10"
                   />
                 </div>
 
                 {/* Filters */}
                 <Select value={visibilityFilter} onValueChange={(v: 'all' | 'org' | 'private' | 'custom') => setVisibilityFilter(v)}>
-                  <SelectTrigger className="w-40 bg-white border-slate-200">
+                  <SelectTrigger className="w-40 bg-background border-border">
                     <FilterIcon className="h-4 w-4 mr-2" />
                     <SelectValue />
                   </SelectTrigger>
+                  
                   <SelectContent>
                     <SelectItem value="all">All Items</SelectItem>
                     <SelectItem value="org">Organisation</SelectItem>
@@ -600,7 +688,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
 
                 {/* Sort */}
                 <Select value={sortBy} onValueChange={(v: SortBy) => setSortBy(v)}>
-                  <SelectTrigger className="w-40 bg-white border-slate-200">
+                  <SelectTrigger className="w-40 bg-background border-border">
                     <SortAscIcon className="h-4 w-4 mr-2" />
                     <SelectValue />
                   </SelectTrigger>
@@ -626,9 +714,12 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                   </Button>
                 )}
 
-                <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                <Dialog open={createOpen} onOpenChange={(open) => {
+                  setCreateOpen(open);
+                  if (!open) setCreatingFolder(false);
+                }}>
                   <DialogTrigger asChild>
-                    <Button className="shadow-sm bg-blue-600 hover:bg-blue-700">
+                    <Button className="shadow-sm">
                       <PlusIcon className="h-4 w-4 mr-2" />
                       New Folder
                     </Button>
@@ -639,18 +730,18 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                       <div>
-                        <label className="text-sm font-medium text-slate-700 mb-2 block">Folder Name</label>
+                        <label className="text-sm font-medium text-foreground mb-2 block">Folder Name</label>
                         <Input 
                           value={newFolderName} 
                           onChange={(e) => setNewFolderName(e.target.value)} 
                           placeholder="Enter folder name"
-                          className="border-slate-200 focus:border-blue-500"
+                          className=""
                         />
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-slate-700 mb-2 block">Visibility</label>
+                        <label className="text-sm font-medium text-foreground mb-2 block">Visibility</label>
                         <Select value={newFolderVis} onValueChange={(v: 'org'|'private'|'custom') => setNewFolderVis(v)}>
-                          <SelectTrigger className="border-slate-200 focus:border-blue-500">
+                          <SelectTrigger className="border-border">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -662,8 +753,8 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                       </div>
                       {newFolderVis === 'custom' && (
                         <div>
-                          <label className="text-sm font-medium text-slate-700 mb-3 block">Select Members</label>
-                          <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-3 bg-slate-50">
+                          <label className="text-sm font-medium text-foreground mb-3 block">Select Members</label>
+                          <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-3 bg-muted">
                             {members.map(member => (
                               <div key={member.id} className="flex items-center space-x-3">
                                 <Checkbox
@@ -677,8 +768,8 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                                   }}
                                 />
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-slate-900">{member.name || 'Unnamed User'}</p>
-                                  <p className="text-xs text-slate-500 truncate">{member.email}</p>
+                                  <p className="text-sm font-medium text-foreground">{member.name || 'Unnamed User'}</p>
+                                  <p className="text-xs text-muted-foreground truncate">{member.email}</p>
                                 </div>
                               </div>
                             ))}
@@ -690,8 +781,9 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                       <Button variant="outline" onClick={() => setCreateOpen(false)}>
                         Cancel
                       </Button>
-                      <Button onClick={submitCreateFolder} className="bg-blue-600 hover:bg-blue-700">
-                        Create Folder
+                      <Button onClick={submitCreateFolder} disabled={creatingFolder}>
+                        {creatingFolder && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {creatingFolder ? 'Creating...' : 'Create Folder'}
                       </Button>
                     </DialogFooter>
                   </DialogContent>
@@ -699,7 +791,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
 
                 <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" className="shadow-sm border-blue-200 hover:bg-blue-50">
+        <Button variant="outline" className="shadow-sm">
                       <UploadIcon className="h-4 w-4 mr-2" />
                       Upload File
                     </Button>
@@ -710,9 +802,9 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                       <div>
-                        <label className="text-sm font-medium text-slate-700 mb-2 block">Visibility</label>
+      <label className="text-sm font-medium text-foreground mb-2 block">Visibility</label>
                         <Select value={uploadVis} onValueChange={(v: 'org'|'private'|'custom') => setUploadVis(v)}>
-                          <SelectTrigger className="border-slate-200 focus:border-blue-500">
+        <SelectTrigger className="border-border">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -724,8 +816,8 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                       </div>
                       {uploadVis === 'custom' && (
                         <div>
-                          <label className="text-sm font-medium text-slate-700 mb-3 block">Select Members</label>
-                          <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-3 bg-slate-50">
+        <label className="text-sm font-medium text-foreground mb-3 block">Select Members</label>
+        <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-3 bg-muted">
                             {members.map(member => (
                               <div key={member.id} className="flex items-center space-x-3">
                                 <Checkbox
@@ -739,8 +831,8 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                                   }}
                                 />
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-slate-900">{member.name || 'Unnamed User'}</p>
-                                  <p className="text-xs text-slate-500 truncate">{member.email}</p>
+          <p className="text-sm font-medium text-foreground">{member.name || 'Unnamed User'}</p>
+          <p className="text-xs text-muted-foreground truncate">{member.email}</p>
                                 </div>
                               </div>
                             ))}
@@ -751,7 +843,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                         <input
                           type="file"
                           onChange={onUpload}
-                          className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+        className="w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-accent file:text-accent-foreground hover:file:bg-accent/80"
                         />
                       </div>
                     </div>
@@ -765,19 +857,19 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
               <div className="lg:hidden space-y-4 border-t pt-4">
                 {/* Search */}
                 <div className="relative">
-                  <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
+                  <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                   <Input
                     placeholder="Search files and folders..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 bg-white border-slate-200 focus:border-blue-500"
+                    className="pl-10"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   {/* Filters */}
                   <Select value={visibilityFilter} onValueChange={(v: 'all' | 'org' | 'private' | 'custom') => setVisibilityFilter(v)}>
-                    <SelectTrigger className="bg-white border-slate-200">
+                    <SelectTrigger className="bg-background border-border">
                       <FilterIcon className="h-4 w-4 mr-2" />
                       <SelectValue />
                     </SelectTrigger>
@@ -791,7 +883,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
 
                   {/* Sort */}
                   <Select value={sortBy} onValueChange={(v: SortBy) => setSortBy(v)}>
-                    <SelectTrigger className="bg-white border-slate-200">
+                    <SelectTrigger className="bg-background border-border">
                       <SortAscIcon className="h-4 w-4 mr-2" />
                       <SelectValue />
                     </SelectTrigger>
@@ -809,26 +901,26 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
         </Card>
 
         {/* Content */}
-        <Card className="shadow-sm border-0 bg-white/70 backdrop-blur-sm min-h-[400px] sm:min-h-[500px]">
+  <Card className="shadow-sm border bg-card backdrop-blur-sm min-h-[400px] sm:min-h-[500px]">
           {loading ? (
             <div className="flex items-center justify-center h-32 sm:h-64">
               <div className="animate-spin rounded-full h-8 w-8 sm:h-12 sm:w-12 border-b-2 border-blue-600"></div>
             </div>
           ) : filteredItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 sm:h-64 text-slate-500 px-4">
-              <FolderIcon className="h-12 w-12 sm:h-16 sm:w-16 mb-4 text-slate-300" />
+            <div className="flex flex-col items-center justify-center h-32 sm:h-64 text-muted-foreground px-4">
+              <FolderIcon className="h-12 w-12 sm:h-16 sm:w-16 mb-4 text-muted-foreground/40" />
               <p className="text-base sm:text-lg font-medium">No items found</p>
               <p className="text-sm text-center">Create a folder or upload a file to get started</p>
             </div>
           ) : (
             <div className="p-3 sm:p-4 lg:p-6">
               {/* Select All Checkbox */}
-              <div className="flex items-center mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-slate-200">
+              <div className="flex items-center mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-border">
                 <Checkbox
                   checked={selectedItems.size === filteredItems.length && filteredItems.length > 0}
                   onCheckedChange={selectAll}
                 />
-                <label className="ml-3 text-xs sm:text-sm font-medium text-slate-700">
+                <label className="ml-3 text-xs sm:text-sm font-medium text-foreground">
                   Select all ({filteredItems.length} items)
                 </label>
               </div>
@@ -837,7 +929,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                   {filteredItems.map((item) => (
                     <div key={item.id} className="group relative">
-                      <Card className="p-3 sm:p-4 hover:shadow-lg transition-all duration-200 border-slate-200 hover:border-blue-300 bg-white">
+                      <Card className="p-3 sm:p-4 hover:shadow-lg transition-all duration-200 border-border hover:border-primary/50 bg-card">
                         <div className="flex items-start space-x-2 sm:space-x-3">
                           <Checkbox
                             checked={selectedItems.has(item.id)}
@@ -851,15 +943,19 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                             >
                               <div className="flex items-center mb-2">
                                 {item.type === 'folder' ? (
-                                  <FolderIcon className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500" />
+                                  <FolderIcon className="h-6 w-6 sm:h-8 sm:w-8 text-primary" />
                                 ) : (
-                                  <FileIcon className="h-6 w-6 sm:h-8 sm:w-8 text-slate-500" />
+                                  (() => {
+                                    const Icon = getFileTypeIcon(item.name);
+                                    const color = getFileTypeColor(item.mimeType);
+                                    return <Icon className={`h-6 w-6 sm:h-8 sm:w-8 ${color}`} />;
+                                  })()
                                 )}
                               </div>
-                              <h3 className="font-medium text-slate-900 truncate mb-1 text-sm sm:text-base">
+                              <h3 className="font-medium text-foreground truncate mb-1 text-sm sm:text-base">
                                 {item.name}
                               </h3>
-                              <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+                              <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
                                 <span className="capitalize">{item.type}</span>
                                 {item.size && <span>{formatFileSize(item.size)}</span>}
                               </div>
@@ -874,7 +970,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                                     setShareOpenFor(item);
                                     setShareVis(item.visibility);
                                   }}
-                                  className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-blue-100"
+                                  className="h-7 w-7 sm:h-8 sm:w-8 p-0"
                                   title="Share"
                                 >
                                   <ShareIcon className="h-3 w-3" />
@@ -883,7 +979,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => showInfo(item)}
-                                  className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-slate-100"
+                                  className="h-7 w-7 sm:h-8 sm:w-8 p-0"
                                   title="Info"
                                 >
                                   <InfoIcon className="h-3 w-3" />
@@ -892,7 +988,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => rename(item)}
-                                  className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-yellow-100"
+                                  className="h-7 w-7 sm:h-8 sm:w-8 p-0"
                                   title="Rename"
                                 >
                                   <Edit3Icon className="h-3 w-3" />
@@ -909,7 +1005,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                 <div className="space-y-2">
                   {filteredItems.map((item) => (
                     <div key={item.id} className="group">
-                      <Card className="p-3 sm:p-4 hover:shadow-md transition-all duration-200 border-slate-200 hover:border-blue-300 bg-white">
+                      <Card className="p-3 sm:p-4 hover:shadow-md transition-all duration-200 border-border hover:border-primary/50 bg-card">
                         <div className="flex items-center space-x-2 sm:space-x-4">
                           <Checkbox
                             checked={selectedItems.has(item.id)}
@@ -920,17 +1016,21 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                             onClick={() => open(item)}
                           >
                             {item.type === 'folder' ? (
-                              <FolderIcon className="h-5 w-5 sm:h-6 sm:w-6 text-blue-500 shrink-0" />
+                              <FolderIcon className="h-5 w-5 sm:h-6 sm:w-6 text-primary shrink-0" />
                             ) : (
-                              <FileIcon className="h-5 w-5 sm:h-6 sm:w-6 text-slate-500 shrink-0" />
+                              (() => {
+                                const Icon = getFileTypeIcon(item.name);
+                                const color = getFileTypeColor(item.mimeType);
+                                return <Icon className={`h-5 w-5 sm:h-6 sm:w-6 ${color} shrink-0`} />;
+                              })()
                             )}
                             <div className="flex-1 min-w-0">
-                              <h3 className="font-medium text-slate-900 truncate text-sm sm:text-base">
+                              <h3 className="font-medium text-foreground truncate text-sm sm:text-base">
                                 {item.name}
                               </h3>
                             </div>
                           </div>
-                          <div className="text-xs sm:text-sm text-slate-500 min-w-0 hidden sm:block">
+                          <div className="text-xs sm:text-sm text-muted-foreground min-w-0 hidden sm:block">
                             {item.size ? formatFileSize(item.size) : '—'}
                           </div>
                           <div className="hidden sm:block">
@@ -944,7 +1044,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                                 setShareOpenFor(item);
                                 setShareVis(item.visibility);
                               }}
-                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-blue-100"
+                              className="h-7 w-7 sm:h-8 sm:w-8 p-0"
                               title="Share"
                             >
                               <ShareIcon className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -953,7 +1053,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                               size="sm"
                               variant="ghost"
                               onClick={() => showInfo(item)}
-                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-slate-100"
+                              className="h-7 w-7 sm:h-8 sm:w-8 p-0"
                               title="Info"
                             >
                               <InfoIcon className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -962,7 +1062,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                               size="sm"
                               variant="ghost"
                               onClick={() => rename(item)}
-                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-yellow-100"
+                              className="h-7 w-7 sm:h-8 sm:w-8 p-0"
                               title="Rename"
                             >
                               <Edit3Icon className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -1038,7 +1138,10 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
         </Dialog>
 
         {/* Rename Dialog */}
-        <Dialog open={!!renameOpenFor} onOpenChange={(o) => setRenameOpenFor(o ? renameOpenFor : null)}>
+        <Dialog open={!!renameOpenFor} onOpenChange={(o) => {
+          setRenameOpenFor(o ? renameOpenFor : null);
+          if (!o) setRenamingItem(false);
+        }}>
           <DialogContent className="max-w-md mx-4 sm:mx-auto">
             <DialogHeader>
               <DialogTitle className="text-lg sm:text-xl font-semibold">
@@ -1071,9 +1174,10 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
               <Button 
                 onClick={submitRename} 
                 className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
-                disabled={!newItemName.trim() || newItemName === renameOpenFor?.name}
+                disabled={!newItemName.trim() || newItemName === renameOpenFor?.name || renamingItem}
               >
-                Rename {renameOpenFor?.type === 'folder' ? 'Folder' : 'File'}
+                {renamingItem && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {renamingItem ? 'Renaming...' : `Rename ${renameOpenFor?.type === 'folder' ? 'Folder' : 'File'}`}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1085,9 +1189,13 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
             <DialogHeader>
               <DialogTitle className="text-lg sm:text-xl font-semibold flex items-center gap-2">
                 {infoOpenFor?.type === 'folder' ? (
-                  <FolderIcon className="h-5 w-5 text-blue-500" />
+                  <FolderIcon className="h-5 w-5 text-primary" />
                 ) : (
-                  <FileIcon className="h-5 w-5 text-slate-500" />
+                  (() => {
+                    const Icon = getFileTypeIcon(infoOpenFor?.name || '');
+                    const color = getFileTypeColor(infoOpenFor?.mimeType || null);
+                    return <Icon className={`h-5 w-5 ${color}`} />;
+                  })()
                 )}
                 <span className="truncate">{infoOpenFor?.name}</span>
               </DialogTitle>
@@ -1095,40 +1203,40 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <div>
-                  <label className="text-slate-600 font-medium">Type</label>
-                  <p className="text-slate-900 capitalize">{infoOpenFor?.type}</p>
+                  <label className="text-muted-foreground font-medium">Type</label>
+                  <p className="text-foreground capitalize">{infoOpenFor?.type}</p>
                 </div>
                 <div>
-                  <label className="text-slate-600 font-medium">Visibility</label>
+                  <label className="text-muted-foreground font-medium">Visibility</label>
                   <div className="mt-1">
                     <VisibilityBadge visibility={infoOpenFor?.visibility || 'private'} />
                   </div>
                 </div>
                 {infoOpenFor?.size && (
-                  <div>
-                    <label className="text-slate-600 font-medium">Size</label>
-                    <p className="text-slate-900">{formatFileSize(infoOpenFor.size)}</p>
-                  </div>
+                    <div>
+                      <label className="text-muted-foreground font-medium">Size</label>
+                      <p className="text-foreground">{formatFileSize(infoOpenFor.size)}</p>
+                    </div>
                 )}
                 {infoOpenFor?.mimeType && (
                   <div className="sm:col-span-2">
-                    <label className="text-slate-600 font-medium">Type</label>
-                    <p className="text-slate-900 text-xs break-all">{infoOpenFor.mimeType}</p>
+                    <label className="text-muted-foreground font-medium">Type</label>
+                    <p className="text-foreground text-xs break-all">{infoOpenFor.mimeType}</p>
                   </div>
                 )}
                 <div>
-                  <label className="text-slate-600 font-medium">Created</label>
-                  <p className="text-slate-900 text-xs">{formatDate(infoOpenFor?.createdAt)}</p>
+                  <label className="text-muted-foreground font-medium">Created</label>
+                  <p className="text-foreground text-xs">{formatDate(infoOpenFor?.createdAt)}</p>
                 </div>
                 <div>
-                  <label className="text-slate-600 font-medium">Modified</label>
-                  <p className="text-slate-900 text-xs">{formatDate(infoOpenFor?.updatedAt || infoOpenFor?.createdAt)}</p>
+                  <label className="text-muted-foreground font-medium">Modified</label>
+                  <p className="text-foreground text-xs">{formatDate(infoOpenFor?.updatedAt || infoOpenFor?.createdAt)}</p>
                 </div>
               </div>
               
               <div className="border-t pt-4">
-                <label className="text-slate-600 font-medium">Location</label>
-                <div className="flex items-center mt-1 text-sm text-slate-600">
+                <label className="text-muted-foreground font-medium">Location</label>
+                <div className="flex items-center mt-1 text-sm text-muted-foreground">
                   <HomeIcon className="h-4 w-4 mr-1 shrink-0" />
                   <div className="overflow-hidden">
                     {stack.slice(1).map((folder, i) => (

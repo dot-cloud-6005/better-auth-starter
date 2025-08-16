@@ -3,6 +3,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Prevent layout shift when scrollbar appears */
+html {
+  overflow-y: scroll;
+}
+
+/* Ensure consistent header positioning */
+body {
+  scrollbar-gutter: stable;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
