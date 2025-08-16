@@ -38,6 +38,8 @@ import {
   FilterIcon,
   SortAscIcon,
   InfoIcon,
+  MenuIcon,
+  XIcon,
 } from 'lucide-react';
 
 export type StorageItem = {
@@ -74,6 +76,7 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
   const [sortBy, setSortBy] = useState<SortBy>('name');
   const [searchQuery, setSearchQuery] = useState('');
   const [visibilityFilter, setVisibilityFilter] = useState<'all' | 'org' | 'private' | 'custom'>('all');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Dialog states
   const [createOpen, setCreateOpen] = useState(false);
@@ -340,64 +343,64 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-2 sm:p-4 lg:p-6">
+      <div className="max-w-7xl mx-auto space-y-3 sm:space-y-4 lg:space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
               Storage
             </h1>
-            <p className="text-slate-600 mt-1">Organise and share your files</p>
+            <p className="text-slate-600 mt-1 text-sm sm:text-base">Organise and share your files</p>
           </div>
         </div>
 
         {/* Navigation Breadcrumbs */}
-        <Card className="p-4 shadow-sm border-0 bg-white/70 backdrop-blur-sm">
+        <Card className="p-3 sm:p-4 shadow-sm border-0 bg-white/70 backdrop-blur-sm">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1 sm:space-x-2 overflow-x-auto flex-1 min-w-0">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setStack([{ id: null, name: 'Home' }])}
-                className="hover:bg-blue-100"
+                className="hover:bg-blue-100 shrink-0"
               >
-                <HomeIcon className="h-4 w-4 mr-2" />
-                Home
+                <HomeIcon className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Home</span>
               </Button>
               {stack.slice(1).map((folder, i) => (
-                <div key={folder.id} className="flex items-center">
-                  <ChevronRightIcon className="h-4 w-4 text-slate-400" />
+                <div key={folder.id} className="flex items-center shrink-0">
+                  <ChevronRightIcon className="h-3 w-3 sm:h-4 sm:w-4 text-slate-400" />
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setStack(stack.slice(0, i + 2))}
-                    className="hover:bg-blue-100"
+                    className="hover:bg-blue-100 max-w-[120px] sm:max-w-none"
                   >
-                    {folder.name}
+                    <span className="truncate text-xs sm:text-sm">{folder.name}</span>
                   </Button>
                 </div>
               ))}
             </div>
             
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1 sm:space-x-2 ml-2">
               {/* View Mode Toggle */}
               <div className="flex items-center border rounded-lg p-1 bg-slate-100">
                 <Button
                   variant={viewMode === 'grid' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setViewMode('grid')}
-                  className="h-8 w-8 p-0"
+                  className="h-7 w-7 sm:h-8 sm:w-8 p-0"
                 >
-                  <GridIcon className="h-4 w-4" />
+                  <GridIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                 </Button>
                 <Button
                   variant={viewMode === 'list' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setViewMode('list')}
-                  className="h-8 w-8 p-0"
+                  className="h-7 w-7 sm:h-8 sm:w-8 p-0"
                 >
-                  <ListIcon className="h-4 w-4" />
+                  <ListIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                 </Button>
               </div>
             </div>
@@ -405,228 +408,437 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
         </Card>
 
         {/* Toolbar */}
-        <Card className="p-4 shadow-sm border-0 bg-white/70 backdrop-blur-sm">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center space-x-4 flex-1">
-              {/* Search */}
-              <div className="relative min-w-[300px]">
-                <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
-                <Input
-                  placeholder="Search files and folders..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 bg-white border-slate-200 focus:border-blue-500"
-                />
+        <Card className="p-3 sm:p-4 shadow-sm border-0 bg-white/70 backdrop-blur-sm">
+          <div className="space-y-3 sm:space-y-4">
+            {/* Mobile Menu Toggle */}
+            <div className="flex items-center justify-between lg:hidden">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="h-9"
+              >
+                {mobileMenuOpen ? <XIcon className="h-4 w-4" /> : <MenuIcon className="h-4 w-4" />}
+                <span className="ml-2">Filters</span>
+              </Button>
+              
+              <div className="flex items-center space-x-2">
+                {selectedItems.size > 0 && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => deleteItems(Array.from(selectedItems))}
+                    className="shadow-sm h-9"
+                  >
+                    <Trash2Icon className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Delete ({selectedItems.size})</span>
+                    <span className="sm:hidden">({selectedItems.size})</span>
+                  </Button>
+                )}
+
+                <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="shadow-sm bg-blue-600 hover:bg-blue-700 h-9">
+                      <PlusIcon className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">New Folder</span>
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl font-semibold">Create New Folder</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div>
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">Folder Name</label>
+                        <Input 
+                          value={newFolderName} 
+                          onChange={(e) => setNewFolderName(e.target.value)} 
+                          placeholder="Enter folder name"
+                          className="border-slate-200 focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">Visibility</label>
+                        <Select value={newFolderVis} onValueChange={(v: 'org'|'private'|'custom') => setNewFolderVis(v)}>
+                          <SelectTrigger className="border-slate-200 focus:border-blue-500">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="org">🏢 All organisation members</SelectItem>
+                            <SelectItem value="private">🔒 Just me</SelectItem>
+                            <SelectItem value="custom">👥 Specific members</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {newFolderVis === 'custom' && (
+                        <div>
+                          <label className="text-sm font-medium text-slate-700 mb-3 block">Select Members</label>
+                          <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-3 bg-slate-50">
+                            {members.map(member => (
+                              <div key={member.id} className="flex items-center space-x-3">
+                                <Checkbox
+                                  checked={selectedMemberIds.includes(member.id)}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setSelectedMemberIds([...selectedMemberIds, member.id]);
+                                    } else {
+                                      setSelectedMemberIds(selectedMemberIds.filter(id => id !== member.id));
+                                    }
+                                  }}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-slate-900">{member.name || 'Unnamed User'}</p>
+                                  <p className="text-xs text-slate-500 truncate">{member.email}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setCreateOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button onClick={submitCreateFolder} className="bg-blue-600 hover:bg-blue-700">
+                        Create Folder
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="shadow-sm border-blue-200 hover:bg-blue-50 h-9">
+                      <UploadIcon className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">Upload File</span>
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl font-semibold">Upload File</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div>
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">Visibility</label>
+                        <Select value={uploadVis} onValueChange={(v: 'org'|'private'|'custom') => setUploadVis(v)}>
+                          <SelectTrigger className="border-slate-200 focus:border-blue-500">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="org">🏢 All organisation members</SelectItem>
+                            <SelectItem value="private">🔒 Just me</SelectItem>
+                            <SelectItem value="custom">👥 Specific members</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {uploadVis === 'custom' && (
+                        <div>
+                          <label className="text-sm font-medium text-slate-700 mb-3 block">Select Members</label>
+                          <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-3 bg-slate-50">
+                            {members.map(member => (
+                              <div key={member.id} className="flex items-center space-x-3">
+                                <Checkbox
+                                  checked={uploadSelectedIds.includes(member.id)}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setUploadSelectedIds([...uploadSelectedIds, member.id]);
+                                    } else {
+                                      setUploadSelectedIds(uploadSelectedIds.filter(id => id !== member.id));
+                                    }
+                                  }}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-slate-900">{member.name || 'Unnamed User'}</p>
+                                  <p className="text-xs text-slate-500 truncate">{member.email}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <input
+                          type="file"
+                          onChange={onUpload}
+                          className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        />
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+
+            {/* Desktop Toolbar */}
+            <div className="hidden lg:flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center space-x-4 flex-1">
+                {/* Search */}
+                <div className="relative min-w-[300px]">
+                  <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
+                  <Input
+                    placeholder="Search files and folders..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 bg-white border-slate-200 focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Filters */}
+                <Select value={visibilityFilter} onValueChange={(v: 'all' | 'org' | 'private' | 'custom') => setVisibilityFilter(v)}>
+                  <SelectTrigger className="w-40 bg-white border-slate-200">
+                    <FilterIcon className="h-4 w-4 mr-2" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Items</SelectItem>
+                    <SelectItem value="org">Organisation</SelectItem>
+                    <SelectItem value="private">Private</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Sort */}
+                <Select value={sortBy} onValueChange={(v: SortBy) => setSortBy(v)}>
+                  <SelectTrigger className="w-40 bg-white border-slate-200">
+                    <SortAscIcon className="h-4 w-4 mr-2" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name">Name</SelectItem>
+                    <SelectItem value="type">Type</SelectItem>
+                    <SelectItem value="modified">Modified</SelectItem>
+                    <SelectItem value="size">Size</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
-              {/* Filters */}
-              <Select value={visibilityFilter} onValueChange={(v: 'all' | 'org' | 'private' | 'custom') => setVisibilityFilter(v)}>
-                <SelectTrigger className="w-40 bg-white border-slate-200">
-                  <FilterIcon className="h-4 w-4 mr-2" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Items</SelectItem>
-                  <SelectItem value="org">Organisation</SelectItem>
-                  <SelectItem value="private">Private</SelectItem>
-                  <SelectItem value="custom">Custom</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center space-x-2">
+                {selectedItems.size > 0 && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => deleteItems(Array.from(selectedItems))}
+                    className="shadow-sm"
+                  >
+                    <Trash2Icon className="h-4 w-4 mr-2" />
+                    Delete ({selectedItems.size})
+                  </Button>
+                )}
 
-              {/* Sort */}
-              <Select value={sortBy} onValueChange={(v: SortBy) => setSortBy(v)}>
-                <SelectTrigger className="w-40 bg-white border-slate-200">
-                  <SortAscIcon className="h-4 w-4 mr-2" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="name">Name</SelectItem>
-                  <SelectItem value="type">Type</SelectItem>
-                  <SelectItem value="modified">Modified</SelectItem>
-                  <SelectItem value="size">Size</SelectItem>
-                </SelectContent>
-              </Select>
+                <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="shadow-sm bg-blue-600 hover:bg-blue-700">
+                      <PlusIcon className="h-4 w-4 mr-2" />
+                      New Folder
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl font-semibold">Create New Folder</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div>
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">Folder Name</label>
+                        <Input 
+                          value={newFolderName} 
+                          onChange={(e) => setNewFolderName(e.target.value)} 
+                          placeholder="Enter folder name"
+                          className="border-slate-200 focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">Visibility</label>
+                        <Select value={newFolderVis} onValueChange={(v: 'org'|'private'|'custom') => setNewFolderVis(v)}>
+                          <SelectTrigger className="border-slate-200 focus:border-blue-500">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="org">🏢 All organisation members</SelectItem>
+                            <SelectItem value="private">🔒 Just me</SelectItem>
+                            <SelectItem value="custom">👥 Specific members</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {newFolderVis === 'custom' && (
+                        <div>
+                          <label className="text-sm font-medium text-slate-700 mb-3 block">Select Members</label>
+                          <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-3 bg-slate-50">
+                            {members.map(member => (
+                              <div key={member.id} className="flex items-center space-x-3">
+                                <Checkbox
+                                  checked={selectedMemberIds.includes(member.id)}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setSelectedMemberIds([...selectedMemberIds, member.id]);
+                                    } else {
+                                      setSelectedMemberIds(selectedMemberIds.filter(id => id !== member.id));
+                                    }
+                                  }}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-slate-900">{member.name || 'Unnamed User'}</p>
+                                  <p className="text-xs text-slate-500 truncate">{member.email}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setCreateOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button onClick={submitCreateFolder} className="bg-blue-600 hover:bg-blue-700">
+                        Create Folder
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="shadow-sm border-blue-200 hover:bg-blue-50">
+                      <UploadIcon className="h-4 w-4 mr-2" />
+                      Upload File
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl font-semibold">Upload File</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div>
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">Visibility</label>
+                        <Select value={uploadVis} onValueChange={(v: 'org'|'private'|'custom') => setUploadVis(v)}>
+                          <SelectTrigger className="border-slate-200 focus:border-blue-500">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="org">🏢 All organisation members</SelectItem>
+                            <SelectItem value="private">🔒 Just me</SelectItem>
+                            <SelectItem value="custom">👥 Specific members</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {uploadVis === 'custom' && (
+                        <div>
+                          <label className="text-sm font-medium text-slate-700 mb-3 block">Select Members</label>
+                          <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-3 bg-slate-50">
+                            {members.map(member => (
+                              <div key={member.id} className="flex items-center space-x-3">
+                                <Checkbox
+                                  checked={uploadSelectedIds.includes(member.id)}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setUploadSelectedIds([...uploadSelectedIds, member.id]);
+                                    } else {
+                                      setUploadSelectedIds(uploadSelectedIds.filter(id => id !== member.id));
+                                    }
+                                  }}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-slate-900">{member.name || 'Unnamed User'}</p>
+                                  <p className="text-xs text-slate-500 truncate">{member.email}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <input
+                          type="file"
+                          onChange={onUpload}
+                          className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        />
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </div>
 
-            <div className="flex items-center space-x-2">
-              {selectedItems.size > 0 && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => deleteItems(Array.from(selectedItems))}
-                  className="shadow-sm"
-                >
-                  <Trash2Icon className="h-4 w-4 mr-2" />
-                  Delete ({selectedItems.size})
-                </Button>
-              )}
+            {/* Mobile Collapsible Filters */}
+            {mobileMenuOpen && (
+              <div className="lg:hidden space-y-4 border-t pt-4">
+                {/* Search */}
+                <div className="relative">
+                  <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
+                  <Input
+                    placeholder="Search files and folders..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 bg-white border-slate-200 focus:border-blue-500"
+                  />
+                </div>
 
-              <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-                <DialogTrigger asChild>
-                  <Button className="shadow-sm bg-blue-600 hover:bg-blue-700">
-                    <PlusIcon className="h-4 w-4 mr-2" />
-                    New Folder
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="text-xl font-semibold">Create New Folder</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div>
-                      <label className="text-sm font-medium text-slate-700 mb-2 block">Folder Name</label>
-                      <Input 
-                        value={newFolderName} 
-                        onChange={(e) => setNewFolderName(e.target.value)} 
-                        placeholder="Enter folder name"
-                        className="border-slate-200 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-700 mb-2 block">Visibility</label>
-                      <Select value={newFolderVis} onValueChange={(v: 'org'|'private'|'custom') => setNewFolderVis(v)}>
-                        <SelectTrigger className="border-slate-200 focus:border-blue-500">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="org">🏢 All organisation members</SelectItem>
-                          <SelectItem value="private">🔒 Just me</SelectItem>
-                          <SelectItem value="custom">👥 Specific members</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {newFolderVis === 'custom' && (
-                      <div>
-                        <label className="text-sm font-medium text-slate-700 mb-3 block">Select Members</label>
-                        <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-3 bg-slate-50">
-                          {members.map(member => (
-                            <div key={member.id} className="flex items-center space-x-3">
-                              <Checkbox
-                                checked={selectedMemberIds.includes(member.id)}
-                                onCheckedChange={(checked) => {
-                                  if (checked) {
-                                    setSelectedMemberIds([...selectedMemberIds, member.id]);
-                                  } else {
-                                    setSelectedMemberIds(selectedMemberIds.filter(id => id !== member.id));
-                                  }
-                                }}
-                              />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-slate-900">{member.name || 'Unnamed User'}</p>
-                                <p className="text-xs text-slate-500 truncate">{member.email}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setCreateOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button onClick={submitCreateFolder} className="bg-blue-600 hover:bg-blue-700">
-                      Create Folder
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Filters */}
+                  <Select value={visibilityFilter} onValueChange={(v: 'all' | 'org' | 'private' | 'custom') => setVisibilityFilter(v)}>
+                    <SelectTrigger className="bg-white border-slate-200">
+                      <FilterIcon className="h-4 w-4 mr-2" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Items</SelectItem>
+                      <SelectItem value="org">Organisation</SelectItem>
+                      <SelectItem value="private">Private</SelectItem>
+                      <SelectItem value="custom">Custom</SelectItem>
+                    </SelectContent>
+                  </Select>
 
-              <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="shadow-sm border-blue-200 hover:bg-blue-50">
-                    <UploadIcon className="h-4 w-4 mr-2" />
-                    Upload File
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="text-xl font-semibold">Upload File</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div>
-                      <label className="text-sm font-medium text-slate-700 mb-2 block">Visibility</label>
-                      <Select value={uploadVis} onValueChange={(v: 'org'|'private'|'custom') => setUploadVis(v)}>
-                        <SelectTrigger className="border-slate-200 focus:border-blue-500">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="org">🏢 All organisation members</SelectItem>
-                          <SelectItem value="private">🔒 Just me</SelectItem>
-                          <SelectItem value="custom">👥 Specific members</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {uploadVis === 'custom' && (
-                      <div>
-                        <label className="text-sm font-medium text-slate-700 mb-3 block">Select Members</label>
-                        <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-3 bg-slate-50">
-                          {members.map(member => (
-                            <div key={member.id} className="flex items-center space-x-3">
-                              <Checkbox
-                                checked={uploadSelectedIds.includes(member.id)}
-                                onCheckedChange={(checked) => {
-                                  if (checked) {
-                                    setUploadSelectedIds([...uploadSelectedIds, member.id]);
-                                  } else {
-                                    setUploadSelectedIds(uploadSelectedIds.filter(id => id !== member.id));
-                                  }
-                                }}
-                              />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-slate-900">{member.name || 'Unnamed User'}</p>
-                                <p className="text-xs text-slate-500 truncate">{member.email}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    <div>
-                      <input
-                        type="file"
-                        onChange={onUpload}
-                        className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                      />
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
+                  {/* Sort */}
+                  <Select value={sortBy} onValueChange={(v: SortBy) => setSortBy(v)}>
+                    <SelectTrigger className="bg-white border-slate-200">
+                      <SortAscIcon className="h-4 w-4 mr-2" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="name">Name</SelectItem>
+                      <SelectItem value="type">Type</SelectItem>
+                      <SelectItem value="modified">Modified</SelectItem>
+                      <SelectItem value="size">Size</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
           </div>
         </Card>
 
         {/* Content */}
-        <Card className="shadow-sm border-0 bg-white/70 backdrop-blur-sm min-h-[500px]">
+        <Card className="shadow-sm border-0 bg-white/70 backdrop-blur-sm min-h-[400px] sm:min-h-[500px]">
           {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <div className="flex items-center justify-center h-32 sm:h-64">
+              <div className="animate-spin rounded-full h-8 w-8 sm:h-12 sm:w-12 border-b-2 border-blue-600"></div>
             </div>
           ) : filteredItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-slate-500">
-              <FolderIcon className="h-16 w-16 mb-4 text-slate-300" />
-              <p className="text-lg font-medium">No items found</p>
-              <p className="text-sm">Create a folder or upload a file to get started</p>
+            <div className="flex flex-col items-center justify-center h-32 sm:h-64 text-slate-500 px-4">
+              <FolderIcon className="h-12 w-12 sm:h-16 sm:w-16 mb-4 text-slate-300" />
+              <p className="text-base sm:text-lg font-medium">No items found</p>
+              <p className="text-sm text-center">Create a folder or upload a file to get started</p>
             </div>
           ) : (
-            <div className="p-6">
+            <div className="p-3 sm:p-4 lg:p-6">
               {/* Select All Checkbox */}
-              <div className="flex items-center mb-4 pb-4 border-b border-slate-200">
+              <div className="flex items-center mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-slate-200">
                 <Checkbox
                   checked={selectedItems.size === filteredItems.length && filteredItems.length > 0}
                   onCheckedChange={selectAll}
                 />
-                <label className="ml-3 text-sm font-medium text-slate-700">
+                <label className="ml-3 text-xs sm:text-sm font-medium text-slate-700">
                   Select all ({filteredItems.length} items)
                 </label>
               </div>
 
               {viewMode === 'grid' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                   {filteredItems.map((item) => (
                     <div key={item.id} className="group relative">
-                      <Card className="p-4 hover:shadow-lg transition-all duration-200 border-slate-200 hover:border-blue-300 bg-white">
-                        <div className="flex items-start space-x-3">
+                      <Card className="p-3 sm:p-4 hover:shadow-lg transition-all duration-200 border-slate-200 hover:border-blue-300 bg-white">
+                        <div className="flex items-start space-x-2 sm:space-x-3">
                           <Checkbox
                             checked={selectedItems.has(item.id)}
                             onCheckedChange={() => toggleSelection(item.id)}
@@ -639,16 +851,16 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                             >
                               <div className="flex items-center mb-2">
                                 {item.type === 'folder' ? (
-                                  <FolderIcon className="h-8 w-8 text-blue-500" />
+                                  <FolderIcon className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500" />
                                 ) : (
-                                  <FileIcon className="h-8 w-8 text-slate-500" />
+                                  <FileIcon className="h-6 w-6 sm:h-8 sm:w-8 text-slate-500" />
                                 )}
                               </div>
-                              <h3 className="font-medium text-slate-900 truncate mb-1">
+                              <h3 className="font-medium text-slate-900 truncate mb-1 text-sm sm:text-base">
                                 {item.name}
                               </h3>
                               <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-                                <span>{item.type}</span>
+                                <span className="capitalize">{item.type}</span>
                                 {item.size && <span>{formatFileSize(item.size)}</span>}
                               </div>
                             </div>
@@ -662,7 +874,8 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                                     setShareOpenFor(item);
                                     setShareVis(item.visibility);
                                   }}
-                                  className="h-8 w-8 p-0"
+                                  className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-blue-100"
+                                  title="Share"
                                 >
                                   <ShareIcon className="h-3 w-3" />
                                 </Button>
@@ -670,7 +883,8 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => showInfo(item)}
-                                  className="h-8 w-8 p-0"
+                                  className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-slate-100"
+                                  title="Info"
                                 >
                                   <InfoIcon className="h-3 w-3" />
                                 </Button>
@@ -678,7 +892,8 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => rename(item)}
-                                  className="h-8 w-8 p-0"
+                                  className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-yellow-100"
+                                  title="Rename"
                                 >
                                   <Edit3Icon className="h-3 w-3" />
                                 </Button>
@@ -694,31 +909,33 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                 <div className="space-y-2">
                   {filteredItems.map((item) => (
                     <div key={item.id} className="group">
-                      <Card className="p-4 hover:shadow-md transition-all duration-200 border-slate-200 hover:border-blue-300 bg-white">
-                        <div className="flex items-center space-x-4">
+                      <Card className="p-3 sm:p-4 hover:shadow-md transition-all duration-200 border-slate-200 hover:border-blue-300 bg-white">
+                        <div className="flex items-center space-x-2 sm:space-x-4">
                           <Checkbox
                             checked={selectedItems.has(item.id)}
                             onCheckedChange={() => toggleSelection(item.id)}
                           />
                           <div 
-                            className="flex items-center space-x-3 flex-1 cursor-pointer"
+                            className="flex items-center space-x-2 sm:space-x-3 flex-1 cursor-pointer min-w-0"
                             onClick={() => open(item)}
                           >
                             {item.type === 'folder' ? (
-                              <FolderIcon className="h-6 w-6 text-blue-500" />
+                              <FolderIcon className="h-5 w-5 sm:h-6 sm:w-6 text-blue-500 shrink-0" />
                             ) : (
-                              <FileIcon className="h-6 w-6 text-slate-500" />
+                              <FileIcon className="h-5 w-5 sm:h-6 sm:w-6 text-slate-500 shrink-0" />
                             )}
                             <div className="flex-1 min-w-0">
-                              <h3 className="font-medium text-slate-900 truncate">
+                              <h3 className="font-medium text-slate-900 truncate text-sm sm:text-base">
                                 {item.name}
                               </h3>
                             </div>
                           </div>
-                          <div className="text-sm text-slate-500 min-w-0">
+                          <div className="text-xs sm:text-sm text-slate-500 min-w-0 hidden sm:block">
                             {item.size ? formatFileSize(item.size) : '—'}
                           </div>
-                          <VisibilityBadge visibility={item.visibility} />
+                          <div className="hidden sm:block">
+                            <VisibilityBadge visibility={item.visibility} />
+                          </div>
                           <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <Button
                               size="sm"
@@ -727,25 +944,28 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                                 setShareOpenFor(item);
                                 setShareVis(item.visibility);
                               }}
-                              className="h-8 w-8 p-0"
+                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-blue-100"
+                              title="Share"
                             >
-                              <ShareIcon className="h-4 w-4" />
+                              <ShareIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                             </Button>
                             <Button
                               size="sm"
                               variant="ghost"
                               onClick={() => showInfo(item)}
-                              className="h-8 w-8 p-0"
+                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-slate-100"
+                              title="Info"
                             >
-                              <InfoIcon className="h-4 w-4" />
+                              <InfoIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                             </Button>
                             <Button
                               size="sm"
                               variant="ghost"
                               onClick={() => rename(item)}
-                              className="h-8 w-8 p-0"
+                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-yellow-100"
+                              title="Rename"
                             >
-                              <Edit3Icon className="h-4 w-4" />
+                              <Edit3Icon className="h-3 w-3 sm:h-4 sm:w-4" />
                             </Button>
                           </div>
                         </div>
@@ -760,9 +980,9 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
 
         {/* Share Dialog */}
         <Dialog open={!!shareOpenFor} onOpenChange={(o) => setShareOpenFor(o ? shareOpenFor : null)}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md mx-4 sm:mx-auto">
             <DialogHeader>
-              <DialogTitle className="text-xl font-semibold">
+              <DialogTitle className="text-lg sm:text-xl font-semibold">
                 Share &quot;{shareOpenFor?.name}&quot;
               </DialogTitle>
             </DialogHeader>
@@ -806,11 +1026,11 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                 </div>
               )}
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShareOpenFor(null)}>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button variant="outline" onClick={() => setShareOpenFor(null)} className="w-full sm:w-auto">
                 Cancel
               </Button>
-              <Button onClick={submitShare} className="bg-blue-600 hover:bg-blue-700">
+              <Button onClick={submitShare} className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto">
                 Update Sharing
               </Button>
             </DialogFooter>
@@ -819,9 +1039,9 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
 
         {/* Rename Dialog */}
         <Dialog open={!!renameOpenFor} onOpenChange={(o) => setRenameOpenFor(o ? renameOpenFor : null)}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md mx-4 sm:mx-auto">
             <DialogHeader>
-              <DialogTitle className="text-xl font-semibold">
+              <DialogTitle className="text-lg sm:text-xl font-semibold">
                 Rename &quot;{renameOpenFor?.name}&quot;
               </DialogTitle>
             </DialogHeader>
@@ -844,13 +1064,13 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                 />
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setRenameOpenFor(null)}>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button variant="outline" onClick={() => setRenameOpenFor(null)} className="w-full sm:w-auto">
                 Cancel
               </Button>
               <Button 
                 onClick={submitRename} 
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
                 disabled={!newItemName.trim() || newItemName === renameOpenFor?.name}
               >
                 Rename {renameOpenFor?.type === 'folder' ? 'Folder' : 'File'}
@@ -861,19 +1081,19 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
 
         {/* Info Dialog */}
         <Dialog open={!!infoOpenFor} onOpenChange={(o) => setInfoOpenFor(o ? infoOpenFor : null)}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md mx-4 sm:mx-auto">
             <DialogHeader>
-              <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <DialogTitle className="text-lg sm:text-xl font-semibold flex items-center gap-2">
                 {infoOpenFor?.type === 'folder' ? (
                   <FolderIcon className="h-5 w-5 text-blue-500" />
                 ) : (
                   <FileIcon className="h-5 w-5 text-slate-500" />
                 )}
-                {infoOpenFor?.name}
+                <span className="truncate">{infoOpenFor?.name}</span>
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <div>
                   <label className="text-slate-600 font-medium">Type</label>
                   <p className="text-slate-900 capitalize">{infoOpenFor?.type}</p>
@@ -891,9 +1111,9 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
                   </div>
                 )}
                 {infoOpenFor?.mimeType && (
-                  <div>
+                  <div className="sm:col-span-2">
                     <label className="text-slate-600 font-medium">Type</label>
-                    <p className="text-slate-900 text-xs">{infoOpenFor.mimeType}</p>
+                    <p className="text-slate-900 text-xs break-all">{infoOpenFor.mimeType}</p>
                   </div>
                 )}
                 <div>
@@ -909,19 +1129,21 @@ export function ModernStorageBrowser({ organizationId }: { organizationId: strin
               <div className="border-t pt-4">
                 <label className="text-slate-600 font-medium">Location</label>
                 <div className="flex items-center mt-1 text-sm text-slate-600">
-                  <HomeIcon className="h-4 w-4 mr-1" />
-                  {stack.slice(1).map((folder, i) => (
-                    <span key={folder.id}>
-                      {i > 0 && <ChevronRightIcon className="h-3 w-3 mx-1" />}
-                      {folder.name}
-                    </span>
-                  ))}
-                  {stack.length === 1 && <span>Root</span>}
+                  <HomeIcon className="h-4 w-4 mr-1 shrink-0" />
+                  <div className="overflow-hidden">
+                    {stack.slice(1).map((folder, i) => (
+                      <span key={folder.id} className="inline-flex items-center">
+                        {i > 0 && <ChevronRightIcon className="h-3 w-3 mx-1 shrink-0" />}
+                        <span className="truncate">{folder.name}</span>
+                      </span>
+                    ))}
+                    {stack.length === 1 && <span>Root</span>}
+                  </div>
                 </div>
               </div>
             </div>
             <DialogFooter>
-              <Button onClick={() => setInfoOpenFor(null)}>
+              <Button onClick={() => setInfoOpenFor(null)} className="w-full sm:w-auto">
                 Close
               </Button>
             </DialogFooter>
