@@ -52,7 +52,7 @@ export async function middleware(request: NextRequest) {
             "img-src 'self' data: blob: https:",
             "font-src 'self' data:",
             // Map tiles/styles and dev websocket
-            "connect-src 'self' https://graph.microsoft.com https://login.microsoftonline.com https://*.upstash.io https://api.maptiler.com https://*.maptiler.com https://demotiles.maplibre.org ws: wss:",
+            "connect-src 'self' https://graph.microsoft.com https://login.microsoftonline.com https://*.upstash.io https://api.maptiler.com https://*.maptiler.com https://demotiles.maplibre.org https://api.mapbox.com https://*.tiles.mapbox.com https://events.mapbox.com ws: wss:",
             // MapLibre uses blob workers; allow them
             "worker-src 'self' blob:",
             "frame-ancestors 'none'",
@@ -73,8 +73,7 @@ export async function middleware(request: NextRequest) {
         response.headers.set("Cross-Origin-Resource-Policy", "same-origin");
         response.headers.set("X-DNS-Prefetch-Control", "off");
         response.headers.set("Origin-Agent-Cluster", "?1");
-    // Legacy fallback (very old Chrome): Feature-Policy
-    response.headers.set("Feature-Policy", "geolocation 'self'");
+        // Remove legacy Feature-Policy header (deprecated) to avoid console warnings
         // Only set HSTS in production/HTTPS
         const proto = request.headers.get("x-forwarded-proto") || request.nextUrl.protocol.replace(":", "");
         if (isProd && proto === "https") {

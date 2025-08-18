@@ -3,16 +3,29 @@
 // Avoid static generation for this route, it relies on browser APIs
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InspectionRecord, EquipmentRecord } from "@/types/navapp";
-import maplibregl, { Map as MapLibreMap, Marker, LngLatLike } from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
 import type { Asset } from "@/types/asset";
 import { formatDateToDDMMYYYY } from "@/lib/utils";
+import {
+  Map as ReactMap,
+  Source,
+  Layer,
+  Marker as RglMarker,
+  NavigationControl,
+  type MapRef,
+} from "react-map-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+
+type MapClickEvent = {
+  features?: Array<{
+    properties?: Record<string, unknown>;
+    geometry?: GeoJSON.Geometry;
+  }>;
+};
 
 export default function MapPage() {
-  const mapRef = useRef<MapLibreMap | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<MapRef | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
@@ -30,6 +43,34 @@ export default function MapPage() {
   const [equipError, setEquipError] = useState<string | null>(null);
   const fetchedInspFor = useRef<number | null>(null);
   const fetchedEquipFor = useRef<number | null>(null);
+  const assetsRef = useRef<Asset[]>([]);
+  const userPosRef = useRef<{ lon: number; lat: number } | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const [isFollowingUser, setIsFollowingUser] = useState(false);
+
+  // Initialize Mapbox CSP-compatible worker when strict CSP is in effect
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (typeof window === "undefined") return;
+      try {
+        const mapboxMod = await import("mapbox-gl");
+        type GLWithWorker = { workerClass?: unknown };
+        const maybeDefault = (mapboxMod as unknown as { default?: GLWithWorker }).default;
+        const gl: GLWithWorker = maybeDefault ?? (mapboxMod as unknown as GLWithWorker);
+        if (!gl.workerClass) {
+          const workerMod = await import("mapbox-gl/dist/mapbox-gl-csp-worker");
+          const workerDefault = (workerMod as unknown as { default?: unknown }).default;
+          if (!cancelled && workerDefault) {
+            gl.workerClass = workerDefault;
+          }
+        }
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const refreshInspections = () => {
     if (!selected) return;
@@ -46,292 +87,64 @@ export default function MapPage() {
   };
   const [searchId, setSearchId] = useState<string>("");
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [isFollowingUser, setIsFollowingUser] = useState(false);
-  const userMarkerRef = useRef<Marker | null>(null);
-  const watchIdRef = useRef<number | null>(null);
-  const userPosRef = useRef<{ lon: number; lat: number } | null>(null);
-  const assetsRef = useRef<Asset[]>([]);
   const LABEL_MIN_ZOOM = 12; // labels appear from this zoom and above
 
   // Initial map center near provided sample coordinates
-  const startCenter = useMemo<LngLatLike>(() => [117.9635, -34.9604], []);
+  const startCenter = useMemo(() => ({ longitude: 117.9635, latitude: -34.9604, zoom: 12 }), []);
+  const [viewState, setViewState] = useState(startCenter);
 
-  useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-
-  // Try preferred online style, fall back to a local blank style offline
-  const preferredStyle = process.env.NEXT_PUBLIC_MAP_STYLE_URL || "https://demotiles.maplibre.org/style.json";
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: preferredStyle,
-      center: startCenter,
-      zoom: 12,
-  attributionControl: false,
-    });
-
-    if (String(preferredStyle).includes("demotiles.maplibre.org")) {
-      map.on("error", (e) => {
-        const src = (e as unknown as { source?: { type?: string } } | undefined)?.source ?? {};
-        // Only for demo style, if style itself fails, fallback to blank
-        const errMsg = String((e as unknown as { error?: unknown })?.error ?? "");
-        if ((src && src.type === "style") || errMsg.includes("Failed to fetch")) {
-          map.setStyle("/styles/blank.json");
+  // Mapbox config
+  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+  // Use a standard Mapbox Satellite base as the default
+  const rawStyle = process.env.NEXT_PUBLIC_MAP_STYLE_URL || "mapbox://styles/mapbox/satellite-streets-v12";
+  // If the provided style is an https URL with an embedded token, use it as a fallback token
+  const tokenFromStyle = useMemo(() => {
+    try {
+      if (/^https?:\/\//i.test(rawStyle)) {
+        const u = new URL(rawStyle);
+        return u.searchParams.get("access_token") || "";
+      }
+    } catch {}
+    return "";
+  }, [rawStyle]);
+  const effectiveToken = mapboxToken || tokenFromStyle;
+  const mapStyle = useMemo(() => {
+    // If the style is a full https URL with an embedded token, only strip it when we have an env token.
+    try {
+      if (/^https?:\/\//i.test(rawStyle)) {
+        const u = new URL(rawStyle);
+        if (mapboxToken) {
+          u.searchParams.delete("access_token");
         }
-      });
+        return u.toString();
+      }
+    } catch {}
+    return rawStyle;
+  }, [rawStyle, mapboxToken]);
+
+  // Show a small hint when a Mapbox token isn't available via env or style URL param
+  const needsToken = typeof rawStyle === "string" && (rawStyle.startsWith("mapbox://") || /api\.mapbox\.com/i.test(rawStyle));
+  const hasTokenInStyle = typeof rawStyle === "string" && /[?&]access_token=/.test(rawStyle);
+  const showTokenWarning = needsToken && !effectiveToken && !hasTokenInStyle;
+
+  // Build circle polygon around lon/lat with given radius in meters
+  const circlePolygon = (lon: number, lat: number, radiusM: number, steps = 64): GeoJSON.Feature<GeoJSON.Polygon> => {
+    const coords: [number, number][] = [];
+    const degLat = radiusM / 111320; // ~ meters per degree latitude
+    const degLonFactor = Math.cos((lat * Math.PI) / 180);
+    const degLon = degLat / Math.max(0.000001, degLonFactor);
+    for (let i = 0; i <= steps; i++) {
+      const theta = (i / steps) * 2 * Math.PI;
+      const dx = Math.cos(theta) * degLon;
+      const dy = Math.sin(theta) * degLat;
+      coords.push([lon + dx, lat + dy]);
     }
-
-    // Add general error handler to suppress tile loading errors
-    map.on("error", (e) => {
-      const errMsg = String((e as unknown as { error?: unknown })?.error ?? "");
-      // Suppress common tile loading errors that don't affect functionality
-      if (errMsg.includes("AJAXError") || errMsg.includes("Failed to fetch")) {
-        console.warn("Map tile loading error (non-critical):", errMsg);
-        // Don't propagate these errors to avoid user-facing error messages
-        return;
-      }
-      // For other errors, log them but don't crash the app
-      console.error("Map error:", e);
-    });
-
-    map.addControl(new maplibregl.NavigationControl({ showCompass: true }));
-
-    mapRef.current = map;
-
-    const SRC_ID = "assets-src";
-    const CIRCLE_ID = "assets-circles";
-    const LABEL_ID = "assets-labels";
-    const USER_ACC_SRC_ID = "user-accuracy-src";
-    const USER_ACC_FILL_ID = "user-accuracy-fill";
-    const USER_ACC_LINE_ID = "user-accuracy-line";
-
-    // Approximate circle polygon around lon/lat with given radius in meters
-    const circlePolygon = (lon: number, lat: number, radiusM: number, steps = 64): GeoJSON.Feature<GeoJSON.Polygon> => {
-      const coords: [number, number][] = [];
-      const degLat = radiusM / 111320; // ~ meters per degree latitude
-      const degLonFactor = Math.cos((lat * Math.PI) / 180);
-      const degLon = degLat / Math.max(0.000001, degLonFactor);
-      for (let i = 0; i <= steps; i++) {
-        const theta = (i / steps) * 2 * Math.PI;
-        const dx = Math.cos(theta) * degLon;
-        const dy = Math.sin(theta) * degLat;
-        coords.push([lon + dx, lat + dy]);
-      }
-      return {
-        type: "Feature",
-        geometry: { type: "Polygon", coordinates: [coords] },
-        properties: {},
-      };
+    return {
+      type: "Feature",
+      geometry: { type: "Polygon", coordinates: [coords] },
+      properties: {},
     };
-
-    const addAssetsSourceAndLayers = () => {
-      if (!mapRef.current) return;
-      const m = mapRef.current;
-      // Ensure source exists
-      if (!m.getSource(SRC_ID)) {
-        const empty: GeoJSON.FeatureCollection<GeoJSON.Point> = { type: "FeatureCollection", features: [] };
-        m.addSource(SRC_ID, { type: "geojson", data: empty });
-      }
-      // Circle layer for points (always visible)
-      if (!m.getLayer(CIRCLE_ID)) {
-        m.addLayer({
-          id: CIRCLE_ID,
-          type: "circle",
-          source: SRC_ID,
-          paint: {
-            // Fill color using unified hierarchy with special cases
-            "circle-color": [
-              "case",
-              // Special case: Isolated Danger - check both function and name
-              [
-                "any",
-                ["in", "Isolated Danger", ["get", "NavAid_Primary_Function"]],
-                ["in", "Isolated Danger", ["downcase", ["get", "NavAid_Name"]]]
-              ], "#ef4444",
-              // Special case: Cardinals - check both function and name
-              [
-                "any",
-                ["in", "Cardinal", ["get", "NavAid_Primary_Function"]],
-                ["in", "cardinal", ["downcase", ["get", "NavAid_Name"]]]
-              ], "#facc15",
-              // Unified hierarchy for all others: Light_Colour -> Daymark -> NavAid_Colour -> blue
-              // Light_Colour takes priority
-              ["match", ["downcase", ["get", "Light_Colour"]], ["red"], true, false], "#ef4444",
-              ["match", ["downcase", ["get", "Light_Colour"]], ["green"], true, false], "#16a34a",
-              ["match", ["downcase", ["get", "Light_Colour"]], ["yellow"], true, false], "#facc15",
-              ["match", ["downcase", ["get", "Light_Colour"]], ["white"], true, false], "#ffffff",
-              // Then Daymark
-              ["match", ["downcase", ["get", "Daymark"]], ["red"], true, false], "#ef4444",
-              ["match", ["downcase", ["get", "Daymark"]], ["green"], true, false], "#16a34a",
-              ["match", ["downcase", ["get", "Daymark"]], ["yellow"], true, false], "#facc15",
-              ["match", ["downcase", ["get", "Daymark"]], ["white"], true, false], "#ffffff",
-              // Then NavAid_Colour
-              ["match", ["downcase", ["get", "NavAid_Colour"]], ["red"], true, false], "#ef4444",
-              ["match", ["downcase", ["get", "NavAid_Colour"]], ["green"], true, false], "#16a34a",
-              ["match", ["downcase", ["get", "NavAid_Colour"]], ["yellow"], true, false], "#facc15",
-              ["match", ["downcase", ["get", "NavAid_Colour"]], ["white"], true, false], "#ffffff",
-              ["match", ["downcase", ["get", "NavAid_Colour"]], ["black/yellow", "yellow/black"], true, false], "#facc15",
-              // Final fallback
-              "#2563eb"
-            ],
-            "circle-radius": 6,
-            // Stroke color: black for special cases and yellow/black combinations
-            "circle-stroke-color": [
-              "case",
-              // Special cases: Isolated Danger and Cardinals get black borders - check both function and name
-              [
-                "any",
-                ["in", "Isolated Danger", ["get", "NavAid_Primary_Function"]],
-                ["in", "Isolated Danger", ["downcase", ["get", "NavAid_Name"]]]
-              ], "#000000",
-              [
-                "any",
-                ["in", "Cardinal", ["get", "NavAid_Primary_Function"]],
-                ["in", "cardinal", ["downcase", ["get", "NavAid_Name"]]]
-              ], "#000000",
-              // Black border for yellow/black NavAid_Colour combinations
-              ["match", ["downcase", ["get", "NavAid_Colour"]], ["black/yellow", "yellow/black"], true, false], "#000000",
-              // White border for everything else
-              "#ffffff"
-            ],
-            "circle-stroke-width": 2,
-          },
-        });
-        // Cursor feedback
-        m.on("mouseenter", CIRCLE_ID, () => (m.getCanvas().style.cursor = "pointer"));
-        m.on("mouseleave", CIRCLE_ID, () => (m.getCanvas().style.cursor = ""));
-        // Click -> select
-        m.on("click", CIRCLE_ID, (e) => {
-          const f = e.features && e.features[0];
-          if (!f) return;
-      const p = (f.properties ?? {}) as Record<string, unknown>;
-      const coords = (f.geometry as GeoJSON.Point).coordinates as [number, number];
-      const getStr = (key: string): string | undefined => {
-        const v = p[key];
-        return v == null || v === "" ? undefined : String(v);
-      };
-      const getNum = (key: string): number | undefined => {
-        const v = p[key];
-        if (v == null || v === "") return undefined;
-        const n = Number(v);
-        return Number.isFinite(n) ? n : undefined;
-      };
-          const idNum = getNum("Asset_Number");
-          if (idNum == null || Number.isNaN(idNum)) return;
-          const id = idNum;
-          const full = assetsRef.current.find((a) => a.Asset_Number === id);
-          if (full) {
-            setSelected(full);
-            setTab("asset");
-          } else {
-            setSelected({
-              Asset_Number: id,
-        NavAid_Name: getStr("NavAid_Name") ?? "",
-        NavAid_Primary_Function: getStr("NavAid_Primary_Function") ?? "",
-        STATUS: getStr("STATUS"),
-        Location_Code: getStr("Location_Code") ?? "",
-              Latitude: coords[1],
-              Longitude: coords[0],
-        NavAid_Colour: getStr("NavAid_Colour"),
-        Northing: getNum("Northing"),
-        Easting: getNum("Easting"),
-        UTM_Zone: getNum("UTM_Zone"),
-        Chart_Character: getStr("Chart_Character"),
-        Flash_Sequence: getStr("Flash_Sequence"),
-        Light_Range: getStr("Light_Range"),
-        Light_Colour: getStr("Light_Colour"),
-        Light_Model: getStr("Light_Model"),
-        Lead_Bearing: getStr("Lead_Bearing"),
-        Daymark: getStr("Daymark"),
-        Mark_Structure: getStr("Mark_Structure"),
-        Situation: getStr("Situation"),
-        Risk_Category: getNum("Risk_Category"),
-        Infrastructure_Subgroup_Code: getStr("Infrastructure_Subgroup_Code"),
-        Function_Code: getStr("Function_Code"),
-        Horizontal_Accuracy: getStr("Horizontal_Accuracy"),
-        Responsible_Agency: getStr("Responsible_Agency"),
-        OWNER: getStr("OWNER"),
-        NavAid_Shape: getStr("NavAid_Shape"),
-        AIS_Type: getStr("AIS_Type"),
-        MMSI_Number: getStr("MMSI_Number"),
-            });
-            setTab("asset");
-          }
-        });
-      }
-      // Symbol labels (only when zoomed in)
-      if (!m.getLayer(LABEL_ID)) {
-        m.addLayer({
-          id: LABEL_ID,
-          type: "symbol",
-          source: SRC_ID,
-          minzoom: LABEL_MIN_ZOOM,
-          layout: {
-            "text-field": ["to-string", ["get", "Asset_Number"]],
-            "text-size": 12,
-            "text-offset": [0, 1.1],
-            "text-anchor": "top",
-            "text-allow-overlap": false,
-          },
-          paint: {
-            "text-color": "#111827",
-            "text-halo-color": "#ffffff",
-            "text-halo-width": 1.2,
-          },
-        });
-      }
-    };
-
-    const addUserAccuracySourceAndLayers = () => {
-      if (!mapRef.current) return;
-      const m = mapRef.current;
-      if (!m.getSource(USER_ACC_SRC_ID)) {
-        const empty: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
-        m.addSource(USER_ACC_SRC_ID, { type: "geojson", data: empty });
-      }
-      if (!m.getLayer(USER_ACC_FILL_ID)) {
-        m.addLayer({
-          id: USER_ACC_FILL_ID,
-          type: "fill",
-          source: USER_ACC_SRC_ID,
-          paint: {
-            "fill-color": "#3b82f6",
-            "fill-opacity": 0.15,
-          },
-        });
-      }
-      if (!m.getLayer(USER_ACC_LINE_ID)) {
-        m.addLayer({
-          id: USER_ACC_LINE_ID,
-          type: "line",
-          source: USER_ACC_SRC_ID,
-          paint: {
-            "line-color": "#3b82f6",
-            "line-width": 2,
-            "line-opacity": 0.7,
-          },
-        });
-      }
-      return { circlePolygon };
-    };
-
-    const onLoad = () => {
-      addAssetsSourceAndLayers();
-      addUserAccuracySourceAndLayers();
-    };
-    const onStyle = () => {
-      addAssetsSourceAndLayers();
-      addUserAccuracySourceAndLayers();
-    };
-    map.on("load", onLoad);
-    map.on("styledata", onStyle);
-
-    return () => {
-      map.off("load", onLoad);
-      map.off("styledata", onStyle);
-      map.remove();
-      mapRef.current = null;
-    };
-  }, [startCenter]);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -513,11 +326,12 @@ export default function MapPage() {
   }, [tab, selected?.Asset_Number]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update GeoJSON source when assets change and fit bounds
+  const [assetsGeo, setAssetsGeo] = useState<GeoJSON.FeatureCollection<GeoJSON.Point>>({ type: "FeatureCollection", features: [] });
+  const [accuracyGeo, setAccuracyGeo] = useState<GeoJSON.FeatureCollection>({ type: "FeatureCollection", features: [] });
+
   useEffect(() => {
-  assetsRef.current = assets;
-    setMapReady(false); // Reset map ready state when assets change
-    const map = mapRef.current;
-    if (!map) return;
+    assetsRef.current = assets;
+    setMapReady(false);
     const fc: GeoJSON.FeatureCollection<GeoJSON.Point> = {
       type: "FeatureCollection",
       features: assets.map((a) => ({
@@ -529,46 +343,35 @@ export default function MapPage() {
           NavAid_Primary_Function: a.NavAid_Primary_Function,
           STATUS: a.STATUS ?? "",
           Location_Code: a.Location_Code,
-  NavAid_Colour: a.NavAid_Colour ?? "",
-  Northing: a.Northing ?? "",
-  Easting: a.Easting ?? "",
-  UTM_Zone: a.UTM_Zone ?? "",
-  Chart_Character: a.Chart_Character ?? "",
-  Flash_Sequence: a.Flash_Sequence ?? "",
-  Light_Range: a.Light_Range ?? "",
-  Light_Colour: a.Light_Colour ?? "",
-  Light_Model: a.Light_Model ?? "",
-  Lead_Bearing: a.Lead_Bearing ?? "",
-  Daymark: a.Daymark ?? "",
-  Mark_Structure: a.Mark_Structure ?? "",
-  Situation: a.Situation ?? "",
-  Risk_Category: a.Risk_Category ?? "",
-  Infrastructure_Subgroup_Code: a.Infrastructure_Subgroup_Code ?? "",
-  Function_Code: a.Function_Code ?? "",
-  Horizontal_Accuracy: a.Horizontal_Accuracy ?? "",
-  Responsible_Agency: a.Responsible_Agency ?? "",
-  OWNER: a.OWNER ?? "",
-  NavAid_Shape: a.NavAid_Shape ?? "",
-  AIS_Type: a.AIS_Type ?? "",
-  MMSI_Number: a.MMSI_Number ?? "",
+          NavAid_Colour: a.NavAid_Colour ?? "",
+          Northing: a.Northing ?? "",
+          Easting: a.Easting ?? "",
+          UTM_Zone: a.UTM_Zone ?? "",
+          Chart_Character: a.Chart_Character ?? "",
+          Flash_Sequence: a.Flash_Sequence ?? "",
+          Light_Range: a.Light_Range ?? "",
+          Light_Colour: a.Light_Colour ?? "",
+          Light_Model: a.Light_Model ?? "",
+          Lead_Bearing: a.Lead_Bearing ?? "",
+          Daymark: a.Daymark ?? "",
+          Mark_Structure: a.Mark_Structure ?? "",
+          Situation: a.Situation ?? "",
+          Risk_Category: a.Risk_Category ?? "",
+          Infrastructure_Subgroup_Code: a.Infrastructure_Subgroup_Code ?? "",
+          Function_Code: a.Function_Code ?? "",
+          Horizontal_Accuracy: a.Horizontal_Accuracy ?? "",
+          Responsible_Agency: a.Responsible_Agency ?? "",
+          OWNER: a.OWNER ?? "",
+          NavAid_Shape: a.NavAid_Shape ?? "",
+          AIS_Type: a.AIS_Type ?? "",
+          MMSI_Number: a.MMSI_Number ?? "",
         },
       })),
     };
-    const trySet = () => {
-      const s = map.getSource("assets-src") as maplibregl.GeoJSONSource | undefined;
-      if (s) {
-        s.setData(fc);
-        map.off("styledata", trySet);
-        map.off("load", trySet);
-      }
-    };
-    // Set immediately if present, otherwise wait for style to be ready
-    trySet();
-    map.on("styledata", trySet);
-    map.on("load", trySet);
+    setAssetsGeo(fc);
 
     // Fit to bounds of assets
-    if (assets.length > 0) {
+    if (assets.length > 0 && mapRef.current) {
       const bounds = assets.reduce(
         (b, a) => {
           b[0][0] = Math.min(b[0][0], a.Longitude);
@@ -584,99 +387,75 @@ export default function MapPage() {
       );
       if (Number.isFinite(bounds[0][0]) && Number.isFinite(bounds[1][0])) {
         try {
-          map.fitBounds(bounds as maplibregl.LngLatBoundsLike, { padding: 40, maxZoom: 14, duration: 800 });
-          // Mark map as ready after the bounds animation completes
-          setTimeout(() => {
-            setMapReady(true);
-          }, 850); // Slightly longer than the animation duration
+          const tuple: [[number, number], [number, number]] = [
+            [bounds[0][0], bounds[0][1]],
+            [bounds[1][0], bounds[1][1]],
+          ];
+          mapRef.current.fitBounds(tuple, { padding: 40, maxZoom: 14, duration: 800 });
+          setTimeout(() => setMapReady(true), 850);
         } catch {}
       }
     } else {
-      // No assets, map is ready immediately
       setMapReady(true);
     }
-    return () => {
-      map.off("styledata", trySet);
-      map.off("load", trySet);
-    };
   }, [assets]);
 
   // Apply color mode to the circle layer and keep it in sync with style changes
-  useEffect(() => {
-    const m = mapRef.current;
-    if (!m) return;
-    const LAYER_ID = "assets-circles";
-    const apply = () => {
-      if (!m.getLayer(LAYER_ID)) return;
-      if (colorMode === "auto") {
-        // Auto mode - unified color hierarchy with special cases
-        const autoColorExpr = [
-          "case",
-          // Special case: Isolated Danger - check both function and name
-          [
-            "any",
-            ["in", "Isolated Danger", ["get", "NavAid_Primary_Function"]],
-            ["in", "Isolated Danger", ["downcase", ["get", "NavAid_Name"]]]
-          ], "#ef4444",
-          // Special case: Cardinals - check both function and name
-          [
-            "any",
-            ["in", "Cardinal", ["get", "NavAid_Primary_Function"]],
-            ["in", "cardinal", ["downcase", ["get", "NavAid_Name"]]]
-          ], "#facc15",
-          // Unified hierarchy for all others: Light_Colour -> Daymark -> NavAid_Colour -> blue
-          // Light_Colour takes priority
-          ["match", ["downcase", ["get", "Light_Colour"]], ["red"], true, false], "#ef4444",
-          ["match", ["downcase", ["get", "Light_Colour"]], ["green"], true, false], "#16a34a",
-          ["match", ["downcase", ["get", "Light_Colour"]], ["yellow"], true, false], "#facc15",
-          ["match", ["downcase", ["get", "Light_Colour"]], ["white"], true, false], "#ffffff",
-          // Then Daymark
-          ["match", ["downcase", ["get", "Daymark"]], ["red"], true, false], "#ef4444",
-          ["match", ["downcase", ["get", "Daymark"]], ["green"], true, false], "#16a34a",
-          ["match", ["downcase", ["get", "Daymark"]], ["yellow"], true, false], "#facc15",
-          ["match", ["downcase", ["get", "Daymark"]], ["white"], true, false], "#ffffff",
-          // Then NavAid_Colour
-          ["match", ["downcase", ["get", "NavAid_Colour"]], ["red"], true, false], "#ef4444",
-          ["match", ["downcase", ["get", "NavAid_Colour"]], ["green"], true, false], "#16a34a",
-          ["match", ["downcase", ["get", "NavAid_Colour"]], ["yellow"], true, false], "#facc15",
-          ["match", ["downcase", ["get", "NavAid_Colour"]], ["white"], true, false], "#ffffff",
-          ["match", ["downcase", ["get", "NavAid_Colour"]], ["black/yellow", "yellow/black"], true, false], "#facc15",
-          // Final fallback
-          "#2563eb"
-        ] as unknown;
-        
-        const autoStrokeExpr = [
-          "case",
-          // Special cases: Isolated Danger and Cardinals get black borders - check both function and name
-          [
-            "any",
-            ["in", "Isolated Danger", ["get", "NavAid_Primary_Function"]],
-            ["in", "Isolated Danger", ["downcase", ["get", "NavAid_Name"]]]
-          ], "#000000",
-          [
-            "any",
-            ["in", "Cardinal", ["get", "NavAid_Primary_Function"]],
-            ["in", "cardinal", ["downcase", ["get", "NavAid_Name"]]]
-          ], "#000000",
-          // Black border for yellow/black NavAid_Colour combinations
-          ["match", ["downcase", ["get", "NavAid_Colour"]], ["black/yellow", "yellow/black"], true, false], "#000000",
-          // White border for everything else
-          "#ffffff"
-        ] as unknown;
-        
-        m.setPaintProperty(LAYER_ID, "circle-color", autoColorExpr);
-        m.setPaintProperty(LAYER_ID, "circle-stroke-color", autoStrokeExpr);
-      } else {
-        // Amber mode - all assets use amber color with white stroke
-        m.setPaintProperty(LAYER_ID, "circle-color", "#facc15");
-        m.setPaintProperty(LAYER_ID, "circle-stroke-color", "#ffffff");
-      }
-    };
-    apply();
-    m.on("styledata", apply);
-    return () => {
-      m.off("styledata", apply);
-    };
+  const circlePaint = useMemo<Record<string, unknown>>(() => {
+    if (colorMode === "amber") {
+      return {
+        "circle-color": "#facc15",
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 2,
+        "circle-radius": 6,
+      };
+    }
+    return {
+      "circle-color": [
+        "case",
+        [
+          "any",
+          ["in", "Isolated Danger", ["get", "NavAid_Primary_Function"]],
+          ["in", "Isolated Danger", ["downcase", ["get", "NavAid_Name"]]]
+        ], "#ef4444",
+        [
+          "any",
+          ["in", "Cardinal", ["get", "NavAid_Primary_Function"]],
+          ["in", "cardinal", ["downcase", ["get", "NavAid_Name"]]]
+        ], "#facc15",
+        ["match", ["downcase", ["get", "Light_Colour"]], ["red"], true, false], "#ef4444",
+        ["match", ["downcase", ["get", "Light_Colour"]], ["green"], true, false], "#16a34a",
+        ["match", ["downcase", ["get", "Light_Colour"]], ["yellow"], true, false], "#facc15",
+        ["match", ["downcase", ["get", "Light_Colour"]], ["white"], true, false], "#ffffff",
+        ["match", ["downcase", ["get", "Daymark"]], ["red"], true, false], "#ef4444",
+        ["match", ["downcase", ["get", "Daymark"]], ["green"], true, false], "#16a34a",
+        ["match", ["downcase", ["get", "Daymark"]], ["yellow"], true, false], "#facc15",
+        ["match", ["downcase", ["get", "Daymark"]], ["white"], true, false], "#ffffff",
+        ["match", ["downcase", ["get", "NavAid_Colour"]], ["red"], true, false], "#ef4444",
+        ["match", ["downcase", ["get", "NavAid_Colour"]], ["green"], true, false], "#16a34a",
+        ["match", ["downcase", ["get", "NavAid_Colour"]], ["yellow"], true, false], "#facc15",
+        ["match", ["downcase", ["get", "NavAid_Colour"]], ["white"], true, false], "#ffffff",
+        ["match", ["downcase", ["get", "NavAid_Colour"]], ["black/yellow", "yellow/black"], true, false], "#facc15",
+        "#2563eb"
+      ],
+      "circle-stroke-color": [
+        "case",
+        [
+          "any",
+          ["in", "Isolated Danger", ["get", "NavAid_Primary_Function"]],
+          ["in", "Isolated Danger", ["downcase", ["get", "NavAid_Name"]]]
+        ], "#000000",
+        [
+          "any",
+          ["in", "Cardinal", ["get", "NavAid_Primary_Function"]],
+          ["in", "cardinal", ["downcase", ["get", "NavAid_Name"]]]
+        ], "#000000",
+        ["match", ["downcase", ["get", "NavAid_Colour"]], ["black/yellow", "yellow/black"], true, false], "#000000",
+        "#ffffff"
+      ],
+      "circle-stroke-width": 2,
+  "circle-radius": 6,
+  };
   }, [colorMode]);
 
   // Handle user interaction detection for following mode
@@ -703,7 +482,6 @@ export default function MapPage() {
   // Always attempt precise tracking on page load (no auto-centering)
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
     if (!("geolocation" in navigator)) {
       setError("Geolocation not supported by this browser");
       return;
@@ -712,56 +490,21 @@ export default function MapPage() {
       (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
         userPosRef.current = { lon: longitude, lat: latitude };
-        
-        // Create or update user marker
-        let marker = userMarkerRef.current;
-        if (!marker) {
-          const el = document.createElement("div");
-          el.style.width = "16px";
-          el.style.height = "16px";
-          el.style.borderRadius = "9999px";
-          el.style.backgroundColor = "#ef4444"; // red dot
-          el.style.border = "2px solid white";
-          marker = new maplibregl.Marker({ element: el }).setLngLat([longitude, latitude]).addTo(map);
-          userMarkerRef.current = marker;
-        } else {
-          marker.setLngLat([longitude, latitude]);
-        }
-        
+        // Update accuracy source
+        const feature = ((): GeoJSON.Feature | null => {
+          if (!Number.isFinite(accuracy) || accuracy == null) return null;
+          const clamped = Math.min(accuracy, 1000);
+          return circlePolygon(longitude, latitude, clamped);
+        })();
+        setAccuracyGeo({ type: "FeatureCollection", features: feature ? [feature] : [] });
+
         setAccuracy(Number.isFinite(accuracy) ? Math.round(accuracy) : null);
 
         // If in following mode, center the map on user location
         if (isFollowingUser) {
-          const currentZoom = map.getZoom ? map.getZoom() : 0;
+          const currentZoom = map?.getZoom ? map.getZoom() : 0;
           const targetZoom = Math.min(15, Math.max(12, Number.isFinite(currentZoom) ? currentZoom : 12));
-          map.easeTo({ center: [longitude, latitude], zoom: targetZoom, duration: 300 });
-        }
-
-        // Update accuracy circle layer only; do not recenter the map automatically
-        const src = map.getSource("user-accuracy-src") as maplibregl.GeoJSONSource | undefined;
-        if (src) {
-          const feature = ((): GeoJSON.Feature | null => {
-            if (!Number.isFinite(accuracy) || accuracy == null) return null;
-            const clamped = Math.min(accuracy, 1000);
-            const degLat = clamped / 111320;
-            const degLonFactor = Math.cos((latitude * Math.PI) / 180);
-            const degLon = degLat / Math.max(0.000001, degLonFactor);
-            const steps = 64;
-            const coords: [number, number][] = [];
-            for (let i = 0; i <= steps; i++) {
-              const theta = (i / steps) * 2 * Math.PI;
-              const dx = Math.cos(theta) * degLon;
-              const dy = Math.sin(theta) * degLat;
-              coords.push([longitude + dx, latitude + dy]);
-            }
-            return {
-              type: "Feature",
-              geometry: { type: "Polygon", coordinates: [coords] },
-              properties: {},
-            } as GeoJSON.Feature<GeoJSON.Polygon>;
-          })();
-          const fc: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: feature ? [feature] : [] };
-          src.setData(fc);
+          map?.easeTo({ center: [longitude, latitude], zoom: targetZoom, duration: 300 });
         }
       },
       (err) => {
@@ -830,9 +573,68 @@ export default function MapPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [selected]);
 
+  // Click handler for asset points
+  const onMapClick = useCallback((e: unknown) => {
+    const features = (e as MapClickEvent)?.features as Array<{ properties?: Record<string, unknown>; geometry?: GeoJSON.Geometry }> | undefined;
+    const f = features && features[0];
+    if (!f) return;
+    const p = (f.properties ?? {}) as Record<string, unknown>;
+    const coords = (f.geometry as GeoJSON.Point).coordinates as [number, number];
+    const getStr = (key: string): string | undefined => {
+      const v = p[key];
+      return v == null || v === "" ? undefined : String(v);
+    };
+    const getNum = (key: string): number | undefined => {
+      const v = p[key];
+      if (v == null || v === "") return undefined;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    const idNum = getNum("Asset_Number");
+    if (idNum == null || Number.isNaN(idNum)) return;
+    const full = assetsRef.current.find((a) => a.Asset_Number === idNum);
+    if (full) {
+      setSelected(full);
+      setTab("asset");
+    } else {
+      setSelected({
+        Asset_Number: idNum,
+        NavAid_Name: getStr("NavAid_Name") ?? "",
+        NavAid_Primary_Function: getStr("NavAid_Primary_Function") ?? "",
+        STATUS: getStr("STATUS"),
+        Location_Code: getStr("Location_Code") ?? "",
+        Latitude: coords[1],
+        Longitude: coords[0],
+        NavAid_Colour: getStr("NavAid_Colour"),
+        Northing: getNum("Northing"),
+        Easting: getNum("Easting"),
+        UTM_Zone: getNum("UTM_Zone"),
+        Chart_Character: getStr("Chart_Character"),
+        Flash_Sequence: getStr("Flash_Sequence"),
+        Light_Range: getStr("Light_Range"),
+        Light_Colour: getStr("Light_Colour"),
+        Light_Model: getStr("Light_Model"),
+        Lead_Bearing: getStr("Lead_Bearing"),
+        Daymark: getStr("Daymark"),
+        Mark_Structure: getStr("Mark_Structure"),
+        Situation: getStr("Situation"),
+        Risk_Category: getNum("Risk_Category"),
+        Infrastructure_Subgroup_Code: getStr("Infrastructure_Subgroup_Code"),
+        Function_Code: getStr("Function_Code"),
+        Horizontal_Accuracy: getStr("Horizontal_Accuracy"),
+        Responsible_Agency: getStr("Responsible_Agency"),
+        OWNER: getStr("OWNER"),
+        NavAid_Shape: getStr("NavAid_Shape"),
+        AIS_Type: getStr("AIS_Type"),
+        MMSI_Number: getStr("MMSI_Number"),
+      });
+      setTab("asset");
+    }
+  }, []);
+
   return (
     <div className="min-h-[calc(100vh-64px)] w-full grid grid-rows-[auto_1fr] gap-2">
-      <div className="flex items-center justify-between gap-2 py-2 px-2 sm:px-4">
+  <div className="flex items-center justify-between gap-2 py-2 px-2 sm:px-4">
         <div className="flex items-center gap-2">
           <h1 className="hidden sm:block text-lg font-semibold pr-3">Assets Map</h1>
           {/* Mobile search (left-aligned) */}
@@ -897,7 +699,7 @@ export default function MapPage() {
               Go
             </button>
           </div>
-        </div>
+  </div>
     {/* Right group: controls + desktop search */}
   <div className="flex items-center gap-3 pr-4 sm:pr-6">
           {/* Desktop search (hidden on mobile), centered-ish by flex distribution */}
@@ -1020,8 +822,73 @@ export default function MapPage() {
           {searchError && <span className="text-red-600 text-sm">{searchError}</span>}
         </div>
       </div>
+      {showTokenWarning && (
+        <div className="mx-2 sm:mx-4 -mt-2 mb-1 rounded border border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200 px-3 py-2 text-xs">
+          Mapbox token is missing. Set NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN (or NEXT_PUBLIC_MAPBOX_TOKEN) in your environment, or include access_token in your style URL.
+        </div>
+      )}
   <div className="relative w-full h-full min-h-[400px] rounded overflow-hidden border">
-    <div ref={containerRef} className="w-full h-full" />
+    <ReactMap
+      ref={mapRef}
+  mapboxAccessToken={effectiveToken}
+      mapStyle={mapStyle}
+      initialViewState={startCenter}
+      onMove={(evt) => setViewState(evt.viewState)}
+      onLoad={() => setMapReady(true)}
+      onError={(e: unknown) => {
+        let msg = "Map load error";
+        if (typeof e === "object" && e !== null) {
+          const err = e as { error?: { message?: unknown }; type?: unknown };
+          msg = typeof err?.error?.message === "string" ? err.error.message :
+                typeof err?.type === "string" ? err.type : msg;
+        }
+        setError(msg);
+      }}
+      {...viewState}
+  interactiveLayerIds={["assets-circles"]}
+  onClick={onMapClick}
+      style={{ width: "100%", height: "100%" }}
+    >
+      <NavigationControl position="top-left" showCompass={true} />
+      {/* Assets */}
+      <Source id="assets-src" type="geojson" data={assetsGeo}>
+        <Layer
+          id="assets-circles"
+          type="circle"
+          paint={circlePaint}
+        />
+        <Layer
+          id="assets-labels"
+          type="symbol"
+          layout={{
+            "text-field": ["to-string", ["get", "Asset_Number"]],
+            "text-size": 12,
+            "text-offset": [0, 1.1],
+            "text-anchor": "top",
+            "text-allow-overlap": false,
+          }}
+          paint={{
+            "text-color": "#111827",
+            "text-halo-color": "#ffffff",
+            "text-halo-width": 1.2,
+          }}
+          minzoom={LABEL_MIN_ZOOM}
+        />
+      </Source>
+
+      {/* Accuracy circle */}
+      <Source id="user-accuracy-src" type="geojson" data={accuracyGeo}>
+        <Layer id="user-accuracy-fill" type="fill" paint={{ "fill-color": "#3b82f6", "fill-opacity": 0.15 }} />
+        <Layer id="user-accuracy-line" type="line" paint={{ "line-color": "#3b82f6", "line-width": 2, "line-opacity": 0.7 }} />
+      </Source>
+
+      {/* User marker */}
+      {userPosRef.current && (
+        <RglMarker longitude={userPosRef.current.lon} latitude={userPosRef.current.lat} anchor="center">
+          <div style={{ width: 16, height: 16, borderRadius: 9999, backgroundColor: "#ef4444", border: "2px solid white" }} />
+        </RglMarker>
+      )}
+    </ReactMap>
     
     {/* Loading overlay */}
     {(loading || !mapReady) && (
@@ -1036,7 +903,7 @@ export default function MapPage() {
     )}
     
     <div className="pointer-events-none absolute bottom-2 right-2 z-10 text-[10px] sm:text-xs text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded">
-      © OpenStreetMap contributors, © MapTiler
+      © Mapbox, © OpenStreetMap contributors
     </div>
   </div>
 

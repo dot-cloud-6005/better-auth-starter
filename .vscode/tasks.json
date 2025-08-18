@@ -14,6 +14,45 @@
 				"$eslint-stylish"
 			],
 			"group": "build"
+		},
+		{
+			"label": "Build Next.js app",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"run",
+				"build"
+			],
+			"problemMatcher": [
+				"$eslint-stylish"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build Next.js app",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"run",
+				"build"
+			],
+			"problemMatcher": [
+				"$eslint-stylish"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build Next.js app",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"run",
+				"build"
+			],
+			"problemMatcher": [
+				"$eslint-stylish"
+			],
+			"group": "build"
 		}
 	]
 }
