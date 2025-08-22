@@ -4,6 +4,18 @@
 export const dynamic = "force-dynamic";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+// Augment window for optional offline cache helpers (injected elsewhere)
+declare global {
+  interface Window {
+    navCache?: {
+      getInspections?: (asset: number) => InspectionRecord[] | undefined;
+      setInspections?: (asset: number, rows: InspectionRecord[]) => void;
+      getEquipment?: (asset: number) => EquipmentRecord[] | undefined;
+      setEquipment?: (asset: number, rows: EquipmentRecord[]) => void;
+    };
+  }
+}
 import type { InspectionRecord, EquipmentRecord } from "@/types/navapp";
 import type { Asset } from "@/types/asset";
 import { formatDateToDDMMYYYY } from "@/lib/utils";
@@ -41,6 +53,9 @@ export default function MapPage() {
   const [equipLoading, setEquipLoading] = useState(false);
   const [inspError, setInspError] = useState<string | null>(null);
   const [equipError, setEquipError] = useState<string | null>(null);
+  // manual fetch triggers (increment to signal refresh while preventing auto fetch on tab switch)
+  const [inspFetchVersion, setInspFetchVersion] = useState(0);
+  const [equipFetchVersion, setEquipFetchVersion] = useState(0);
   const fetchedInspFor = useRef<number | null>(null);
   const fetchedEquipFor = useRef<number | null>(null);
   const assetsRef = useRef<Asset[]>([]);
@@ -77,6 +92,8 @@ export default function MapPage() {
     fetchedInspFor.current = null;
     setInsp(null);
     setInspError(null);
+    setInspSource(null);
+    setInspFetchVersion(v => v + 1);
   };
 
   const refreshEquipment = () => {
@@ -84,6 +101,7 @@ export default function MapPage() {
     fetchedEquipFor.current = null;
     setEquip(null);
     setEquipError(null);
+    setEquipFetchVersion(v => v + 1);
   };
   const [searchId, setSearchId] = useState<string>("");
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -172,7 +190,7 @@ export default function MapPage() {
     };
   }, []);
 
-  // Reset tab data on selection change; keep Asset tab as default
+  // Reset tab data on selection change; keep Asset tab as default. Do NOT auto-fetch insp/equip (offline-first manual refresh).
   useEffect(() => {
     if (!selected) {
       setInsp(null);
@@ -197,133 +215,54 @@ export default function MapPage() {
     fetchedInspFor.current = null;
     fetchedEquipFor.current = null;
   }, [selected]); // Use full selected object since we check if it exists
-
-  // Lazy-load inspections when tab is opened
+  // Manual fetch handlers for inspections & equipment (offline-first: only when user requests refresh)
   useEffect(() => {
-    // Don't run if we don't have what we need
-    if (!selected || tab !== "inspect") {
-      console.log("Skipping inspection fetch", { hasSelected: !!selected, tab });
-      return;
-    }
-
-    // Don't run if we already have data for this asset
-    if (insp !== null && fetchedInspFor.current === selected.Asset_Number) {
-      console.log("Already have inspection data for asset", selected.Asset_Number);
-      return;
-    }
-
-    // Don't run if we're already loading for this asset
-    if (inspLoading && fetchedInspFor.current === selected.Asset_Number) {
-      console.log("Already loading inspections for asset", selected.Asset_Number);
-      return;
-    }
-
-    console.log("Starting inspection fetch for asset", selected.Asset_Number);
-    
+    if (!selected || tab !== 'inspect') return; // only active tab
+    if (fetchedInspFor.current === selected.Asset_Number && insp !== null) return; // already have
+    if (inspFetchVersion === 0) return; // user hasn't requested a fetch yet
     let isCancelled = false;
     const ctrl = new AbortController();
-    
     setInspLoading(true);
     setInspError(null);
     fetchedInspFor.current = selected.Asset_Number;
-    
-    const url = `/api/navapp/inspections/${selected.Asset_Number}`;
-    console.log("Fetching inspections from:", url);
-    
-    fetch(url, { signal: ctrl.signal })
-      .then((r) => {
-        if (isCancelled) return;
-        console.log("Inspection fetch response:", r.status, r.ok);
-        return r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`));
-      })
-      .then((j) => {
-        if (isCancelled) return;
-        console.log("Inspection data received:", j);
-        setInsp(j?.data ?? []);
-        setInspSource(j?.meta?.source ?? null);
-        try { console.debug("Inspect fetched", { asset: selected.Asset_Number, count: (j?.data ?? []).length, source: j?.meta?.source }); } catch {}
-      })
-      .catch((e) => {
-        if (isCancelled) return;
-        console.error("Inspection fetch error:", e);
-        if (!ctrl.signal.aborted) {
-          setInspError(e?.message || String(e));
-          // prevent endless retry loop by marking as loaded with empty data
-          setInsp([]);
-          setInspSource('none');
-          try { console.debug("Inspect fetch error", { asset: selected.Asset_Number, error: String(e) }); } catch {}
-        } else {
-          console.log("Fetch was aborted, not setting error state");
-        }
-      })
-      .finally(() => {
-        if (!isCancelled) {
-          console.log("Inspection fetch completed");
-          setInspLoading(false);
-        }
-      });
-    
-    return () => {
-      console.log("Cleaning up inspection fetch");
-      isCancelled = true;
-      ctrl.abort();
-    };
-  }, [tab, selected?.Asset_Number]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Attempt to load from local SQLite cache first if available (non-blocking network) - expect window.navCache?.getInspections(assetNumber)
+    try {
+      const cached = (window as any)?.navCache?.getInspections?.(selected.Asset_Number);
+      if (cached && Array.isArray(cached)) {
+        setInsp(cached as InspectionRecord[]);
+        setInspSource('db');
+      }
+    } catch {}
+    fetch(`/api/navapp/inspections/${selected.Asset_Number}`, { signal: ctrl.signal })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+  .then(j => { if (isCancelled) return; setInsp(j?.data ?? []); setInspSource(j?.meta?.source ?? null); try { (window as any)?.navCache?.setInspections?.(selected.Asset_Number, j?.data ?? []);} catch {} })
+      .catch(e => { if (isCancelled) return; if (!ctrl.signal.aborted) { setInspError(e?.message || String(e)); setInsp([]); setInspSource('none'); } })
+      .finally(() => { if (!isCancelled) setInspLoading(false); });
+    return () => { isCancelled = true; ctrl.abort(); };
+  }, [inspFetchVersion, tab, selected?.Asset_Number]);
 
-  // Lazy-load equipment when tab is opened
   useEffect(() => {
-    // Don't run if we don't have what we need
-    if (!selected || tab !== "equipment") {
-      return;
-    }
-
-    // Don't run if we already have data for this asset
-    if (equip !== null && fetchedEquipFor.current === selected.Asset_Number) {
-      return;
-    }
-
-    // Don't run if we're already loading for this asset
-    if (equipLoading && fetchedEquipFor.current === selected.Asset_Number) {
-      return;
-    }
-
+    if (!selected || tab !== 'equipment') return;
+    if (fetchedEquipFor.current === selected.Asset_Number && equip !== null) return;
+    if (equipFetchVersion === 0) return;
     let isCancelled = false;
     const ctrl = new AbortController();
-    
     setEquipLoading(true);
     setEquipError(null);
     fetchedEquipFor.current = selected.Asset_Number;
-    
+    try { // load cache first
+      const cached = (window as any)?.navCache?.getEquipment?.(selected.Asset_Number);
+      if (cached && Array.isArray(cached)) {
+        setEquip(cached as EquipmentRecord[]);
+      }
+    } catch {}
     fetch(`/api/navapp/equipment/${selected.Asset_Number}`, { signal: ctrl.signal })
-      .then((r) => {
-        if (isCancelled) return;
-        return r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`));
-      })
-      .then((j) => {
-        if (isCancelled) return;
-        setEquip(j?.data ?? []);
-        try { console.debug("Equipment fetched", { asset: selected.Asset_Number, count: (j?.data ?? []).length }); } catch {}
-      })
-      .catch((e) => {
-        if (isCancelled) return;
-        if (!ctrl.signal.aborted) {
-          setEquipError(e?.message || String(e));
-          // prevent endless retry loop by marking as loaded with empty data
-          setEquip([]);
-          try { console.debug("Equipment fetch error", { asset: selected.Asset_Number, error: String(e) }); } catch {}
-        }
-      })
-      .finally(() => {
-        if (!isCancelled) {
-          setEquipLoading(false);
-        }
-      });
-    
-    return () => {
-      isCancelled = true;
-      ctrl.abort();
-    };
-  }, [tab, selected?.Asset_Number]); // eslint-disable-line react-hooks/exhaustive-deps
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+  .then(j => { if (isCancelled) return; setEquip(j?.data ?? []); try { (window as any)?.navCache?.setEquipment?.(selected.Asset_Number, j?.data ?? []);} catch {} })
+      .catch(e => { if (isCancelled) return; if (!ctrl.signal.aborted) { setEquipError(e?.message || String(e)); setEquip([]); } })
+      .finally(() => { if (!isCancelled) setEquipLoading(false); });
+    return () => { isCancelled = true; ctrl.abort(); };
+  }, [equipFetchVersion, tab, selected?.Asset_Number]);
 
   // Update GeoJSON source when assets change and fit bounds
   const [assetsGeo, setAssetsGeo] = useState<GeoJSON.FeatureCollection<GeoJSON.Point>>({ type: "FeatureCollection", features: [] });
@@ -632,6 +571,8 @@ export default function MapPage() {
     }
   }, []);
 
+  const [showImageFull, setShowImageFull] = useState(false);
+
   return (
     <div className="min-h-[calc(100vh-64px)] w-full grid grid-rows-[auto_1fr] gap-2">
   <div className="flex items-center justify-between gap-2 py-2 px-2 sm:px-4">
@@ -834,7 +775,17 @@ export default function MapPage() {
       mapStyle={mapStyle}
       initialViewState={startCenter}
       onMove={(evt) => setViewState(evt.viewState)}
-      onLoad={() => setMapReady(true)}
+      onLoad={() => {
+        setMapReady(true);
+        // cursor: pointer only over asset circles
+        try {
+          const m = mapRef.current?.getMap?.();
+          if (m) {
+            m.on('mousemove', 'assets-circles', () => { m.getCanvas().style.cursor = 'pointer'; });
+            m.on('mouseleave', 'assets-circles', () => { m.getCanvas().style.cursor = ''; });
+          }
+        } catch {}
+      }}
       onError={(e: unknown) => {
         let msg = "Map load error";
         if (typeof e === "object" && e !== null) {
@@ -902,9 +853,7 @@ export default function MapPage() {
       </div>
     )}
     
-    <div className="pointer-events-none absolute bottom-2 right-2 z-10 text-[10px] sm:text-xs text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded">
-      © Mapbox, © OpenStreetMap contributors
-    </div>
+    
   </div>
 
   {selected && (
@@ -1022,8 +971,37 @@ export default function MapPage() {
 
             {/* Enhanced content area */}
             <div className="flex-1 overflow-y-auto overscroll-y-contain">
-              {tab === "asset" && (
+              {/* Asset Tab */}
+              <div className={tab === "asset" ? "block" : "hidden"}>
                 <div className="p-4 sm:p-6 space-y-6">
+                  {/* Placeholder thumbnail (will use last service image in future) */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 dark:text-neutral-300 mb-3 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-pink-600 dark:text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h18M3 19h18M5 5l6.5 7L5 19m14-14l-6.5 7L19 19" />
+                      </svg>
+                      Asset Photo
+                    </h3>
+                    <div className="flex items-start gap-4">
+                      <button
+                        type="button"
+                        onClick={() => setShowImageFull(true)}
+                        className="group relative border border-gray-200 dark:border-neutral-700 rounded-lg overflow-hidden bg-gray-100 dark:bg-neutral-800 w-40 h-28 flex items-center justify-center"
+                        title="Click to enlarge"
+                      >
+                        <img
+                          src="/asset-placeholder.svg"
+                          alt="Asset placeholder"
+                          className="w-20 h-20 opacity-80 group-hover:opacity-100 transition-opacity"
+                          loading="lazy"
+                        />
+                        <span className="absolute bottom-1 right-1 text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-white">Preview</span>
+                      </button>
+                      <p className="text-xs text-gray-500 dark:text-neutral-400 max-w-sm leading-relaxed">
+                        A placeholder image is shown. This will be replaced with the last service&apos;s main image once media sync is implemented. Click the thumbnail to view a larger preview.
+                      </p>
+                    </div>
+                  </div>
                   {/* Asset Section - Identifying information and location data */}
                   <div>
                     <h3 className="text-sm font-semibold text-gray-700 dark:text-neutral-300 mb-3 flex items-center gap-2">
@@ -1095,9 +1073,10 @@ export default function MapPage() {
                     </div>
                   </div>
                 </div>
-              )}
+              </div>
 
-              {tab === "inspect" && (
+              {/* Inspections Tab */}
+              <div className={tab === "inspect" ? "block" : "hidden"}>
                 <div className="p-4 sm:p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
@@ -1112,7 +1091,7 @@ export default function MapPage() {
                           </span>
                         ) : (
                           <span>
-                            {insp ? `${insp.length} record${insp.length === 1 ? '' : 's'}` : '—'}
+                            {insp ? `${insp.length} record${insp.length === 1 ? '' : 's'}` : 'No data yet'}
                             {inspSource && ` from ${inspSource}`}
                           </span>
                         )}
@@ -1139,17 +1118,26 @@ export default function MapPage() {
                     </div>
                   )}
                   
-                  {(!inspLoading && (!insp || insp.length === 0)) && (
+          {(!inspLoading && (!insp || insp.length === 0)) && (
                     <div className="text-center py-8">
                       <svg className="w-12 h-12 text-gray-400 dark:text-neutral-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      <p className="text-sm text-gray-500 dark:text-neutral-400">No inspection records available</p>
+            <p className="text-sm text-gray-500 dark:text-neutral-400">No inspection records loaded. Use Refresh to fetch data.</p>
                     </div>
                   )}
                   
-                  <div className="space-y-3">
-                    {insp?.map((r, i) => (
+                  <div className="relative">
+                    {inspLoading && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 dark:bg-neutral-900/70">
+                        <div className="flex flex-col items-center gap-3">
+                          <div className="animate-spin rounded-full h-10 w-10 border-2 border-b-transparent border-blue-500"></div>
+                          <span className="text-xs text-gray-600 dark:text-neutral-400">Loading inspections…</span>
+                        </div>
+                      </div>
+                    )}
+                    <div className={"space-y-3 transition-opacity " + (inspLoading ? "opacity-30" : "opacity-100") + " min-h-[200px]"}>
+                      {insp?.map((r, i) => (
                       <div key={i} className="bg-gray-50 dark:bg-neutral-800/30 rounded-xl border border-gray-200 dark:border-neutral-700/50 p-4 hover:shadow-sm transition-shadow">
                         <div className="flex flex-wrap gap-3 justify-between items-start mb-3">
                           <div className="flex items-center gap-3">
@@ -1188,12 +1176,14 @@ export default function MapPage() {
                           </div>
                         )}
                       </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
-              )}
+              </div>
 
-              {tab === "equipment" && (
+              {/* Equipment Tab */}
+              <div className={tab === "equipment" ? "block" : "hidden"}>
                 <div className="p-4 sm:p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold text-gray-700 dark:text-neutral-300">Equipment Records</h3>
@@ -1227,17 +1217,17 @@ export default function MapPage() {
                     </div>
                   )}
                   
-                  {(!equipLoading && (!equip || equip.length === 0)) && (
+          {(!equipLoading && (!equip || equip.length === 0)) && (
                     <div className="text-center py-8">
                       <svg className="w-12 h-12 text-gray-400 dark:text-neutral-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
-                      <p className="text-sm text-gray-500 dark:text-neutral-400">No equipment records available</p>
+            <p className="text-sm text-gray-500 dark:text-neutral-400">No equipment records loaded. Use Refresh to fetch data.</p>
                     </div>
                   )}
                   
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <div className={"grid grid-cols-1 xl:grid-cols-2 gap-4 min-h-[200px] " + (equipLoading ? "opacity-30" : "opacity-100") }>
                     {equip?.map((e, i) => (
                       <div key={i} className="bg-gray-50 dark:bg-neutral-800/30 rounded-xl border border-gray-200 dark:border-neutral-700/50 p-4 hover:shadow-sm transition-shadow">
                         {e["Equipment Type"] && (
@@ -1265,7 +1255,7 @@ export default function MapPage() {
                     ))}
                   </div>
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Enhanced mobile footer */}
@@ -1276,6 +1266,19 @@ export default function MapPage() {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showImageFull && (
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowImageFull(false)}>
+          <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setShowImageFull(false)} className="absolute -top-3 -right-3 bg-white dark:bg-neutral-800 rounded-full p-2 shadow hover:shadow-md" aria-label="Close image">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+            <div className="bg-white dark:bg-neutral-900 rounded-xl overflow-hidden border border-gray-200 dark:border-neutral-700 p-4">
+              <img src="/asset-placeholder.svg" alt="Asset placeholder large" className="mx-auto max-h-[70vh] object-contain" />
+              <p className="mt-3 text-center text-xs text-gray-500 dark:text-neutral-400">Placeholder image – will show last service main image when available.</p>
             </div>
           </div>
         </div>
