@@ -6,9 +6,11 @@ export default function SuperAdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="pt-16">
+    <>
       <Header />
-      {children}
-    </div>
+      <div className="pt-16">
+        {children}
+      </div>
+    </>
   );
 }

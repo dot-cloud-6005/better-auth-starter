@@ -7,6 +7,11 @@ import { getCurrentUser } from "./users";
 import { cacheGet, cacheSet } from "@/lib/cache";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { render } from "@react-email/render";
+import OrganizationInvitationEmail from "@/components/emails/organization-invitation";
+import { sendGraphMail } from "@/lib/msgraph";
+import { rateLimitTake } from "@/lib/rate-limit";
+import { getCurrentUserForLogging, logSystemActivity } from "@/lib/equipment/actions/system-logs";
 
 export async function getOrganizations() {
     const { currentUser } = await getCurrentUser();
@@ -106,6 +111,18 @@ export async function revokeInvitation(id: string) {
         }
 
         await db.delete(invitation).where(eq(invitation.id, id));
+        // Log
+        const { userId, userEmail } = await getCurrentUserForLogging();
+        const hdrs = await headers();
+        await logSystemActivity({
+            eventType: 'invitation_revoked',
+            userId,
+            userEmail,
+            description: `Revoked invitation ${id} for ${inv.email}`,
+            metadata: { invitation_id: id, organization_id: inv.organizationId },
+            ipAddress: hdrs.get('x-forwarded-for') || undefined,
+            userAgent: hdrs.get('user-agent') || undefined,
+        });
         // Best-effort cache invalidation: find org id and delete related keys if needed
         return { success: true as const };
     } catch (error) {
@@ -127,5 +144,65 @@ export async function getAllOrganizationsWithMembers() {
     } catch (error) {
         console.error(error);
         return [];
+    }
+}
+
+export async function resendInvitation(id: string) {
+    try {
+        const inv = await db.query.invitation.findFirst({ where: eq(invitation.id, id) });
+        if (!inv) return { success: false as const, error: "Invitation not found" };
+
+        // Permission: reuse 'create' on invitation within org as sending an invite action
+        const { success, error } = await auth.api.hasPermission({
+            headers: await headers(),
+            body: { permissions: { invitation: ["create"] }, organizationId: inv.organizationId }
+        });
+        if (!success || error) {
+            return { success: false as const, error: error || "Forbidden" };
+        }
+
+        // Rate limit: 3 resends per 24h per invitation
+        const key = `inv:resend:${id}`;
+        const rl = await rateLimitTake(key, 3, 60 * 60 * 24);
+        if (!rl.allowed) {
+            return { success: false as const, error: "Daily resend limit reached" };
+        }
+
+        // Load org and inviter for email
+        const org = await db.query.organization.findFirst({ where: eq(organization.id, inv.organizationId) });
+        const inviter = await db.query.user.findFirst({ where: eq(user.id, inv.inviterId) });
+
+        const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL}/api/accept-invitation/${inv.id}`;
+        const html = await render(
+            OrganizationInvitationEmail({
+                email: inv.email,
+                invitedByUsername: inviter?.name || "",
+                invitedByEmail: inviter?.email || "",
+                teamName: org?.name || "Organization",
+                inviteLink,
+            })
+        );
+        await sendGraphMail({
+            from: process.env.EMAIL_SENDER_ADDRESS,
+            to: inv.email,
+            subject: "You've been invited to join our organization",
+            html,
+        });
+        // Log
+        const { userId, userEmail } = await getCurrentUserForLogging();
+        const hdrs = await headers();
+        await logSystemActivity({
+            eventType: 'invitation_resent',
+            userId,
+            userEmail,
+            description: `Resent invitation ${id} to ${inv.email}`,
+            metadata: { invitation_id: id, organization_id: inv.organizationId },
+            ipAddress: hdrs.get('x-forwarded-for') || undefined,
+            userAgent: hdrs.get('user-agent') || undefined,
+        });
+        return { success: true as const };
+    } catch (error) {
+        console.error(error);
+        return { success: false as const, error: (error as Error).message };
     }
 }

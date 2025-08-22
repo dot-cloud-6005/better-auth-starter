@@ -87,7 +87,7 @@ const resolvers = {
           inviteLink: args.inviteLink,
         })
       );
-      await sendGraphMail({ to: args.to, subject: "You've been invited to join our organization", html });
+      await sendGraphMail({ to: args.to, subject: "You've been invited to join our organisation", html });
       return true;
     },
   },

@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Table,
   TableBody,
@@ -17,21 +19,21 @@ interface MembersTableProps {
 export default function MembersTable({ members }: MembersTableProps) {
   return (
     <Table>
-      <TableCaption>A list of organization members.</TableCaption>
+      <TableCaption className="text-muted-foreground">A list of organisation members.</TableCaption>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[100px]">Username</TableHead>
-          <TableHead>Email</TableHead>
-          <TableHead>Role</TableHead>
-          <TableHead className="text-right">Actions</TableHead>
+          <TableHead className="w-[100px] text-foreground">Username</TableHead>
+          <TableHead className="text-foreground">Email</TableHead>
+          <TableHead className="text-foreground">Role</TableHead>
+          <TableHead className="text-right text-foreground">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {members.map((member) => (
           <TableRow key={member.id}>
-            <TableCell className="font-medium">{member.user.name}</TableCell>
-            <TableCell>{member.user.email}</TableCell>
-            <TableCell>{member.role}</TableCell>
+            <TableCell className="font-medium text-foreground">{member.user.name}</TableCell>
+            <TableCell className="text-foreground">{member.user.email}</TableCell>
+            <TableCell className="text-foreground">{member.role}</TableCell>
             <TableCell className="text-right">
               <MembersTableAction memberId={member.id} />
             </TableCell>

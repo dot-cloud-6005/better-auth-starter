@@ -6,9 +6,11 @@ export default function OrgLayout({
   children: React.ReactNode;
 }) {
   return (
-  <div className="pt-16">
+    <>
       <Header />
-      {children}
-    </div>
+      <div className="pt-16 min-h-[calc(100vh-4rem)] w-full">
+        {children}
+      </div>
+    </>
   );
 }

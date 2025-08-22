@@ -3,6 +3,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  eslint: {
+    // Run ESLint checks during builds
+    ignoreDuringBuilds: false,
+  },
   
   // Security headers
   async headers() {
@@ -44,6 +48,16 @@ const nextConfig: NextConfig = {
   
   // External packages for server components
   serverExternalPackages: ['sharp'],
+  webpack: (config) => {
+    // Ensure we don't try to polyfill heavy Node modules; mark as unavailable for browser
+    config.resolve = config.resolve || {}
+    config.resolve.fallback = {
+      ...(config.resolve.fallback || {}),
+      fs: false,
+      path: false,
+    }
+    return config
+  }
 };
 
 export default nextConfig;

@@ -54,7 +54,7 @@ const OrganizationInvitationEmail = (
               <Text className="text-[16px] text-gray-700 mb-[24px] m-0">
                 Accept this invitation to start collaborating with your team
                 members and access all the tools and resources available in your
-                organization.
+                organisation.
               </Text>
             </Section>
 
@@ -104,13 +104,7 @@ const OrganizationInvitationEmail = (
                 This invitation was sent to {props.email}. If you weren&apos;t
                 expecting this invitation, you can safely ignore this email.
               </Text>
-              <Text className="text-[12px] text-gray-500 text-center m-0 mb-[8px]">
-                © {new Date().getFullYear()} Your Company Name. All rights
-                reserved.
-              </Text>
-              <Text className="text-[12px] text-gray-500 text-center m-0">
-                123 Business Street, Suite 100, City, State 12345
-              </Text>
+              
             </Section>
           </Container>
         </Body>

@@ -2,9 +2,10 @@ import { Logout } from "./logout";
 import { ModeSwitcher } from "./mode-switcher";
 import { OptimizedOrganizationSwitcher } from "./organization-switcher-optimized";
 import { getActiveOrganization, getOrganizations } from "@/server/organizations";
-import Link from "next/link";
+import { getOrganizationBySlug } from "@/server/organizations";
 import { getCurrentUser, isMasterAdmin } from "@/server/users";
-import { Menu, Map as MapIcon, Shield, ChevronRight, Building2, User as UserIcon } from "lucide-react";
+import { Menu, Shield, Building2, User as UserIcon } from "lucide-react";
+import { MenuRoutes, type MenuRoute } from "@/components/menu-routes";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export async function Header() {
@@ -18,8 +19,32 @@ export async function Header() {
     ? `/${organizations[0].slug}/nav-map`
   : "/landing";
 
+  // Build allowed org routes based on permissions
+  const baseSlug = activeOrg?.slug || organizations[0]?.slug;
+  const routes: MenuRoute[] = [];
+  if (baseSlug) {
+    routes.push({ href: `/${baseSlug}/home`, label: 'Home', icon: 'home' });
+    routes.push({ href: `/${baseSlug}/nav-map`, label: 'Navigation Map', icon: 'map' });
+    routes.push({ href: `/${baseSlug}/storage`, label: 'Storage', icon: 'storage' });
+    routes.push({ href: `/${baseSlug}/plant`, label: 'Plant', icon: 'truck' });
+  // Use icon key 'equipment' which maps to the Wrench icon in menu-routes
+  routes.push({ href: `/${baseSlug}/equipment`, label: 'Equipment', icon: 'equipment' });
+    routes.push({ href: `/${baseSlug}/inspections`, label: 'Inspections', icon: 'list' });
+    routes.push({ href: `/${baseSlug}/analytics`, label: 'Analytics', icon: 'analytics' });
+    // Only show Admin for org owners/admins
+    const orgFull = await getOrganizationBySlug(baseSlug);
+    const hasOrgAdminAccess = !!orgFull?.members?.some((m: any) => m.userId === currentUser.id && (m.role === 'owner' || m.role === 'admin'));
+    if (hasOrgAdminAccess) {
+      routes.push({ href: `/${baseSlug}/admin`, label: 'Admin', icon: 'admin' });
+    }
+  }
+  // Append Super Admin route only for master in the same list to keep spacing consistent
+  if (master) {
+    routes.push({ href: `/super-admin`, label: 'Super Admin', icon: 'superAdmin' });
+  }
+
   return (
-    <header className="fixed top-0 inset-x-0 z-50 h-16 flex justify-between items-center px-4 bg-white/80 dark:bg-neutral-900/80 backdrop-blur border-b border-gray-200 dark:border-neutral-800">
+    <header className="fixed top-0 inset-x-0 z-50 h-16 flex justify-between items-center px-4 bg-white/80 dark:bg-neutral-900/80 backdrop-blur border-b border-gray-200 dark:border-neutral-800 print:hidden">
       {/* Left: Org switcher (desktop) */}
       <div className="hidden sm:block">
         <OptimizedOrganizationSwitcher organizations={organizations} />
@@ -91,32 +116,7 @@ export async function Header() {
               </div>
 
               {/* Nav items */}
-              <nav className="grid gap-2">
-                <Link
-                  href={navMapHref}
-                  className="group flex items-center gap-3 rounded-md border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
-                >
-                  <MapIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium">Navigation Map</div>
-                    <div className="text-xs text-muted-foreground">Explore assets and tracking</div>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600 dark:text-neutral-500" />
-                </Link>
-                {master ? (
-                  <Link
-                    href="/super-admin"
-                    className="group flex items-center gap-3 rounded-md border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
-                  >
-                    <Shield className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium">Super Admin</div>
-                      <div className="text-xs text-muted-foreground">Manage users and organisations</div>
-                    </div>
-                    <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600 dark:text-neutral-500" />
-                  </Link>
-                ) : null}
-              </nav>
+              <MenuRoutes routes={routes} />
             </div>
 
             {/* Footer */}

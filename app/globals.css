@@ -3,14 +3,18 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Prevent layout shift when scrollbar appears */
+/* Fix content shift while maintaining scroll functionality */
 html {
-  overflow-y: scroll;
+  margin-left: calc(100vw - 100%); /* Compensate for scrollbar width */
+  overflow-x: hidden; /* Prevent horizontal scrolling */
 }
 
-/* Ensure consistent header positioning */
+/* Body should scroll normally while maintaining stable layout */
 body {
-  scrollbar-gutter: stable;
+  min-height: 100vh;
+  overflow-y: scroll; /* Always show scrollbar to prevent layout shift */
+  overflow-x: hidden; /* Prevent horizontal scrolling */
+  scrollbar-gutter: stable; /* Keep scrollbar space reserved */
 }
 
 @theme inline {
@@ -129,4 +133,40 @@ body {
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Make scrollbar visible on hover but less obtrusive when not in use */
+::-webkit-scrollbar-thumb {
+  opacity: 0.7;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  opacity: 1;
 }

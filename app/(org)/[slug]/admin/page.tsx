@@ -1,10 +1,10 @@
-import MembersTable from "@/components/members-table";
-import { InviteByEmailForm } from "@/components/forms/invite-by-email-form";
-import InvitationsTable from "@/components/invitations-table";
 import { getOrganizationBySlug, getInvitationsByOrgId } from "@/server/organizations";
 import { getCurrentUser } from "@/server/users";
-import { CreateOrgDialog } from "@/components/create-org-dialog.client";
 import { redirect } from "next/navigation";
+// merged admin features
+import AdminClient from "./admin-client";
+import { getUsers, getAdmins, getEmailSettings, getSystemLogs } from "./actions";
+import type { EmailAutomationJob } from "./job-templates";
 
 type Params = Promise<{ slug: string }>;
 
@@ -29,29 +29,57 @@ export default async function OrgAdminPage({ params }: { params: Params }) {
     return redirect(`/${slug}/home`);
   }
 
+  // Load equipment/plant admin datasets and logs; degrade gracefully
+  let users: any[] = [];
+  let admins: any[] = [];
+  let emailSettings: any[] = [];
+  let systemLogs: any[] = [];
+  try {
+    const [u, a, e, logs] = await Promise.all([
+      getUsers(),
+      getAdmins(),
+      getEmailSettings(),
+      getSystemLogs(40),
+    ]);
+    users = u || [];
+    admins = a || [];
+    emailSettings = e || [];
+    systemLogs = logs || [];
+  } catch (err) {
+    try {
+      const [u, a] = await Promise.all([getUsers(), getAdmins()]);
+      users = u || [];
+      admins = a || [];
+    } catch {}
+  }
+
+  const transformedEmailSettings: EmailAutomationJob[] = (emailSettings || []).map((setting: any) => ({
+    ...setting,
+    name: setting.name || `${(setting.automation_category || setting.type || 'email').toString()} Job`,
+    description:
+      setting.description || `Automated ${(setting.automation_category || setting.type || 'email').toString().replace('_', ' ')} notifications`,
+    priority: setting.priority || 5,
+    run_count: setting.run_count || 0,
+    error_count: setting.error_count || 0,
+    last_run: setting.last_run || undefined,
+    next_run: setting.next_run || undefined,
+    last_error: setting.last_error || undefined,
+  }));
+
   return (
-    <div className="flex flex-col gap-6 max-w-3xl mx-auto py-10">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Admin · {organization?.name}</h1>
-        {isOwner ? (
-          <CreateOrgDialog />
-        ) : null}
-      </div>
-
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold">Members</h2>
-        <MembersTable members={organization?.members || []} />
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold">Invite by email</h2>
-        <InviteByEmailForm organizationId={organization?.id || ""} />
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold">Pending invitations</h2>
-        <InvitationsTable invitations={invitations} />
-      </section>
+    <div className="flex flex-col gap-10 mx-auto py-10 max-w-7xl">
+      {/* System Administration (equipment/plant/logs) */}
+      <AdminClient
+        initialUsers={users as any}
+        initialAdmins={admins as any}
+        initialEmailSettings={transformedEmailSettings as any}
+        initialSystemLogs={systemLogs as any}
+  organizationName={organization?.name}
+  organizationId={organization?.id || ""}
+  organizationSlug={organization?.slug || undefined}
+  members={(organization?.members as any) || []}
+  invitations={invitations as any}
+      />
     </div>
   );
 }

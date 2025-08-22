@@ -31,6 +31,16 @@ export async function middleware(request: NextRequest) {
     const sessionCookie = getSessionCookie(request);
 
     let response: NextResponse;
+    // If user hits a root-level equipment/plant/... path without slug, but provides ?org=slug, redirect to slug-aware path
+    if (/^\/(equipment|plant|inspections|analytics)(\/)?$/.test(pathname)) {
+        const org = request.nextUrl.searchParams.get('org') || request.nextUrl.searchParams.get('slug');
+        if (org) {
+            const url = new URL(`/${org}${pathname}`, request.url);
+            for (const [k, v] of request.nextUrl.searchParams.entries()) if (k !== 'org' && k !== 'slug') url.searchParams.set(k, v);
+            return NextResponse.redirect(url);
+        }
+    }
+
     if (!isPublic && !sessionCookie) {
         const url = new URL("/login", request.url);
         url.searchParams.set("next", pathname);
@@ -44,6 +54,32 @@ export async function middleware(request: NextRequest) {
         const isProd = process.env.NODE_ENV === "production";
 
         const scriptSrc = "script-src 'self' 'unsafe-inline'" + (isProd ? "" : " 'unsafe-eval'") + " blob: data:";
+        // Dynamically include Supabase origin if configured, so fetch/redirects to Supabase aren't blocked by CSP
+        const supabaseOrigin = (() => {
+            const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+            if (!url) return null;
+            try {
+                const u = new URL(url);
+                return `${u.protocol}//${u.host}`;
+            } catch {
+                return null;
+            }
+        })();
+        const connectSrcBase = [
+            "connect-src 'self'",
+            "https://graph.microsoft.com",
+            "https://login.microsoftonline.com",
+            "https://*.upstash.io",
+            "https://api.maptiler.com",
+            "https://*.maptiler.com",
+            "https://demotiles.maplibre.org",
+            "https://api.mapbox.com",
+            "https://*.tiles.mapbox.com",
+            "https://events.mapbox.com",
+            "ws:",
+            "wss:"
+        ];
+        if (supabaseOrigin) connectSrcBase.splice(1, 0, supabaseOrigin);
         const cspParts = [
             "default-src 'self'",
             // Allow Next.js dev/hmr, Graph, and external APIs we call from the browser
@@ -52,7 +88,7 @@ export async function middleware(request: NextRequest) {
             "img-src 'self' data: blob: https:",
             "font-src 'self' data:",
             // Map tiles/styles and dev websocket
-            "connect-src 'self' https://graph.microsoft.com https://login.microsoftonline.com https://*.upstash.io https://api.maptiler.com https://*.maptiler.com https://demotiles.maplibre.org https://api.mapbox.com https://*.tiles.mapbox.com https://events.mapbox.com ws: wss:",
+            connectSrcBase.join(' '),
             // MapLibre uses blob workers; allow them
             "worker-src 'self' blob:",
             "frame-ancestors 'none'",

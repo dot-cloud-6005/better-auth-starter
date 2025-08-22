@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { authClient } from "@/lib/auth-client";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 const schema = z.object({
   email: z.string().email(),
@@ -21,6 +22,7 @@ type FormValues = z.infer<typeof schema>;
 export function InviteByEmailForm({ organizationId }: { organizationId: string }) {
   const [loading, setLoading] = useState(false);
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { email: "", role: "member" } });
+  const router = useRouter();
 
   const onSubmit: (values: FormValues) => Promise<void> = async (values) => {
     try {
@@ -36,6 +38,8 @@ export function InviteByEmailForm({ organizationId }: { organizationId: string }
       }
       toast.success("Invitation sent");
       form.reset({ email: "", role: values.role });
+  // Refresh server components to update the pending invitations list
+  router.refresh();
     } catch (e) {
       console.error(e);
       toast.error("Failed to send invitation");
