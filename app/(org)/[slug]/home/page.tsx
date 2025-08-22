@@ -65,7 +65,7 @@ export default async function OrgHome({ params }: { params: Params }) {
         <TabsContent value="plant-equipment">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Card className="hover:shadow-md transition-shadow">
-              <Link href={`/${slug}/equipment`} className="block focus:outline-hidden">
+              <Link href={`/${slug}/plant-equip/equipment`} className="block focus:outline-hidden">
                 <CardHeader>
                   <CardTitle>Equipment</CardTitle>
                   <CardDescription>Manage equipment, groups, and schedules.</CardDescription>
@@ -73,7 +73,7 @@ export default async function OrgHome({ params }: { params: Params }) {
               </Link>
             </Card>
             <Card className="hover:shadow-md transition-shadow">
-              <Link href={`/${slug}/plant`} className="block focus:outline-hidden">
+              <Link href={`/${slug}/plant-equip/plant`} className="block focus:outline-hidden">
                 <CardHeader>
                   <CardTitle>Plant</CardTitle>
                   <CardDescription>Manage plant assets and maintenance.</CardDescription>
@@ -81,7 +81,7 @@ export default async function OrgHome({ params }: { params: Params }) {
               </Link>
             </Card>
             <Card className="hover:shadow-md transition-shadow">
-              <Link href={`/${slug}/inspections`} className="block focus:outline-hidden">
+              <Link href={`/${slug}/plant-equip/inspections`} className="block focus:outline-hidden">
                 <CardHeader>
                   <div className="flex items-center gap-2">
                     <ClipboardList className="h-4 w-4 text-muted-foreground" />
@@ -92,7 +92,7 @@ export default async function OrgHome({ params }: { params: Params }) {
               </Link>
             </Card>
             <Card className="hover:shadow-md transition-shadow">
-              <Link href={`/${slug}/analytics`} className="block focus:outline-hidden">
+              <Link href={`/${slug}/plant-equip/analytics`} className="block focus:outline-hidden">
                 <CardHeader>
                   <div className="flex items-center gap-2">
                     <BarChart3 className="h-4 w-4 text-muted-foreground" />

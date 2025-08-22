@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronRight, Map as MapIcon, HardDrive, Wrench, BarChartBig, Settings2, Home, Truck, ListChecks } from "lucide-react";
+import { ChevronRight, Map as MapIcon, HardDrive, Wrench, BarChart3, Settings2, Home, Truck, ListChecks } from "lucide-react";
 import React from "react";
 import { DialogClose } from "@/components/ui/dialog";
 
@@ -22,7 +22,8 @@ const icons: Record<IconName, React.ComponentType<{ className?: string }>> = {
   map: MapIcon,
   storage: HardDrive,
   equipment: Wrench,
-  analytics: BarChartBig,
+  // Replaced BarChartBig (missing in current lucide package) with BarChart3
+  analytics: BarChart3,
   admin: Settings2,
   superAdmin: Settings2,
   truck: Truck,

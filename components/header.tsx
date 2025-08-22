@@ -26,11 +26,11 @@ export async function Header() {
     routes.push({ href: `/${baseSlug}/home`, label: 'Home', icon: 'home' });
     routes.push({ href: `/${baseSlug}/nav-map`, label: 'Navigation Map', icon: 'map' });
     routes.push({ href: `/${baseSlug}/storage`, label: 'Storage', icon: 'storage' });
-    routes.push({ href: `/${baseSlug}/plant`, label: 'Plant', icon: 'truck' });
+    routes.push({ href: `/${baseSlug}/plant-equip/plant`, label: 'Plant', icon: 'truck' });
   // Use icon key 'equipment' which maps to the Wrench icon in menu-routes
-  routes.push({ href: `/${baseSlug}/equipment`, label: 'Equipment', icon: 'equipment' });
-    routes.push({ href: `/${baseSlug}/inspections`, label: 'Inspections', icon: 'list' });
-    routes.push({ href: `/${baseSlug}/analytics`, label: 'Analytics', icon: 'analytics' });
+  routes.push({ href: `/${baseSlug}/plant-equip/equipment`, label: 'Equipment', icon: 'equipment' });
+    routes.push({ href: `/${baseSlug}/plant-equip/inspections`, label: 'Inspections', icon: 'list' });
+    routes.push({ href: `/${baseSlug}/plant-equip/analytics`, label: 'Analytics', icon: 'analytics' });
     // Only show Admin for org owners/admins
     const orgFull = await getOrganizationBySlug(baseSlug);
     const hasOrgAdminAccess = !!orgFull?.members?.some((m: any) => m.userId === currentUser.id && (m.role === 'owner' || m.role === 'admin'));
