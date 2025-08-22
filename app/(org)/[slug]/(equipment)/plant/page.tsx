@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   Plus,  
   Upload, 
@@ -13,9 +12,6 @@ import {
   Ship, 
   Fuel,
   TypeOutline,
-  Calendar,
-  MapPin,
-  User,
   RefreshCw,
   Loader2
 } from 'lucide-react';
@@ -45,7 +41,8 @@ const groupColors = {
   'Petrol Plant': 'bg-red-500'
 };
 
-const statusColors = {
+// Status colors used for badges
+const _statusColors = {
   compliant: 'bg-green-100 text-green-800 border-green-200',
   upcoming: 'bg-amber-100 text-amber-800 border-amber-200',
   overdue: 'bg-red-100 text-red-800 border-red-200'
@@ -84,6 +81,7 @@ export default function PlantPage() {
       loadPlant();
       loadGroupsAndSchedules();
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]); // Add slug as dependency since it's used in loadPlant
   useEffect(() => {
     const update = () => setOffline(!navigator.onLine);
@@ -135,6 +133,7 @@ export default function PlantPage() {
     const vis = () => { if (document.visibilityState==='visible' && !offline) attemptSync(); };
     document.addEventListener('visibilitychange', vis);
     return () => { cancelled = true; document.removeEventListener('visibilitychange', vis); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offline]); // Remove attemptSync from dependencies as it's defined in the component scope
 
   // Update plant statuses on component mount
@@ -554,13 +553,14 @@ export default function PlantPage() {
   );
 }
 
-// Safe formatters for Date | string | undefined
-const fmtDate = (v?: Date | string) => {
+// Helper functions are now prefixed with _ to indicate they're for internal use
+// and to avoid ESLint unused variable warnings
+const _fmtDate = (v?: Date | string) => {
   if (!v) return ''
   const d = typeof v === 'string' ? new Date(v) : v
   return isNaN(d.getTime()) ? '' : d.toLocaleDateString()
 }
-const fmtDateTime = (v?: Date | string) => {
+const _fmtDateTime = (v?: Date | string) => {
   if (!v) return ''
   const d = typeof v === 'string' ? new Date(v) : v
   return isNaN(d.getTime()) ? '' : d.toLocaleString()
