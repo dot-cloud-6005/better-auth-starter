@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronRight, Map as MapIcon, HardDrive, Wrench, BarChart3, Settings2, Home, Truck, ListChecks } from "lucide-react";
+import { ChevronRight, Map as MapIcon, HardDrive, Wrench, BarChart3, Settings2, Home, Truck, ListChecks, User as UserIcon } from "lucide-react";
 import React from "react";
 import { DialogClose } from "@/components/ui/dialog";
 
@@ -15,7 +15,8 @@ type IconName =
   | "admin"
   | "superAdmin"
   | "truck" // Plant route
-  | "list"; // Inspections route
+  | "list" // Inspections route
+  | "profile"; // User profile / security settings
 
 const icons: Record<IconName, React.ComponentType<{ className?: string }>> = {
   home: Home,
@@ -28,6 +29,7 @@ const icons: Record<IconName, React.ComponentType<{ className?: string }>> = {
   superAdmin: Settings2,
   truck: Truck,
   list: ListChecks,
+  profile: UserIcon,
 };
 
 export interface MenuRoute {

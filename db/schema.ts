@@ -53,6 +53,21 @@ export const verification = appSchema.table("verification", {
     updatedAt: timestamp('updated_at').$defaultFn(() => /* @__PURE__ */ new Date())
 });
 
+// WebAuthn / Passkey credentials
+export const webauthnCredential = appSchema.table("webauthn_credential", {
+    id: text('id').primaryKey(), // internal id (uuid or similar)
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    credentialId: text('credential_id').notNull().unique(), // base64url
+    publicKey: text('public_key').notNull(), // base64url-encoded COSE key
+    counter: integer('counter').default(0).notNull(),
+    transports: text('transports'),
+    deviceType: text('device_type'), // singleDevice | multiDevice (from verification result)
+    backedUp: boolean('backed_up'),
+    createdAt: timestamp('created_at').$defaultFn(() => /* @__PURE__ */ new Date()).notNull(),
+    updatedAt: timestamp('updated_at').$defaultFn(() => /* @__PURE__ */ new Date()).notNull(),
+    lastUsedAt: timestamp('last_used_at')
+});
+
 export const organization = appSchema.table("organization", {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
@@ -186,6 +201,7 @@ export const schema = {
   session,
   account,
   verification,
+    webauthnCredential,
   organization,
   member,
   invitation,

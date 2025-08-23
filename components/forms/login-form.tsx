@@ -1,5 +1,6 @@
 "use client";
 
+import { startAuthentication } from "@simplewebauthn/browser";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
@@ -81,7 +82,7 @@ export function LoginForm({
         }
         throw new Error(msg);
       }
-  setEmail(normalized);
+      setEmail(normalized);
       setStep("verify");
       toast.success("We sent you a 6-digit code.");
     } catch (e: unknown) {
@@ -98,7 +99,10 @@ export function LoginForm({
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), code: values.code }),
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          code: values.code,
+        }),
       });
       if (!res.ok) {
         const msg = await res.text();
@@ -109,6 +113,37 @@ export function LoginForm({
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Invalid code";
       toast.error(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function tryPasskey() {
+    const emailVal = requestForm.getValues("email").trim().toLowerCase();
+    if (!emailVal) {
+      toast.error("Enter email first");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const begin = await fetch("/api/auth/passkey/auth-begin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: emailVal }),
+      });
+      if (!begin.ok) throw new Error("No passkeys for that email");
+      const { options, userId } = await begin.json();
+      const assertion = await startAuthentication(options);
+      const complete = await fetch("/api/auth/passkey/auth-complete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId, credential: assertion }),
+      });
+      if (!complete.ok) throw new Error("Passkey sign-in failed");
+      toast.success("Signed in");
+      router.push("/landing");
+    } catch (e: any) {
+      toast.error(e.message || "Passkey failed");
     } finally {
       setIsLoading(false);
     }
@@ -167,6 +202,19 @@ export function LoginForm({
                         <Loader2 className="size-4 md:size-5 animate-spin" />
                       ) : (
                         "Send code"
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full md:h-12 md:text-base"
+                      disabled={isLoading}
+                      onClick={tryPasskey}
+                    >
+                      {isLoading ? (
+                        <Loader2 className="size-4 md:size-5 animate-spin" />
+                      ) : (
+                        "Use Passkey"
                       )}
                     </Button>
                   </div>

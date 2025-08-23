@@ -4,7 +4,7 @@ import { OptimizedOrganizationSwitcher } from "./organization-switcher-optimized
 import { getActiveOrganization, getOrganizations } from "@/server/organizations";
 import { getOrganizationBySlug } from "@/server/organizations";
 import { getCurrentUser, isMasterAdmin } from "@/server/users";
-import { Menu, Shield, Building2, User as UserIcon } from "lucide-react";
+import { Menu, Building2, User as UserIcon } from "lucide-react";
 import { MenuRoutes, type MenuRoute } from "@/components/menu-routes";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
@@ -31,6 +31,9 @@ export async function Header() {
   routes.push({ href: `/${baseSlug}/plant-equip/equipment`, label: 'Equipment', icon: 'equipment' });
     routes.push({ href: `/${baseSlug}/plant-equip/inspections`, label: 'Inspections', icon: 'list' });
     routes.push({ href: `/${baseSlug}/plant-equip/analytics`, label: 'Analytics', icon: 'analytics' });
+  // Profile route intentionally hidden for production testing of Passkeys
+  // Restore by uncommenting below when ready to expose to users.
+  // routes.push({ href: `/${baseSlug}/profile`, label: 'Profile & Security', icon: 'profile' });
     // Only show Admin for org owners/admins
     const orgFull = await getOrganizationBySlug(baseSlug);
     const hasOrgAdminAccess = !!orgFull?.members?.some((m: any) => m.userId === currentUser.id && (m.role === 'owner' || m.role === 'admin'));

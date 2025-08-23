@@ -12,24 +12,6 @@ import redis, {
 } from '@/lib/equipment/redis'
 import { ActionResult } from '@/types/equipment/actions'
 
-/* // Helper functions for safe Redis operations (same as equipment)
-async function safeRedisGet(key: string): Promise<any> {
-  try {
-    return await redis.get(key)
-  } catch (error) {
-    console.error('Redis get error:', error)
-    return null
-  }
-}
-
-async function safeRedisSetex(key: string, ttl: number, value: string): Promise<void> {
-  try {
-    await redis.setex(key, ttl, value)
-  } catch (error) {
-    console.error('Redis setex error:', error)
-  }
-} */
-
 async function safeRedisDel(key: string): Promise<void> {
   try {
     await redis.del(key)

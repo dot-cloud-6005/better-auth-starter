@@ -134,3 +134,23 @@ Before production deployment, test:
 - [ ] Error handling (ensure no sensitive data in errors)
 
 The storage system is now **production-ready** with comprehensive security controls in place.
+
+## Authentication Methods Roadmap
+
+| Method | Status | Notes |
+|--------|--------|-------|
+| Email OTP (passwordless) | Implemented | Custom lightweight plugin in `lib/auth.ts` (`/request-otp`, `/verify-otp`). |
+| Passkeys (WebAuthn) | Planned | Dependencies (`@simplewebauthn/*`) already present. Profile page (`/(org)/[slug]/profile`) includes UI placeholder. Requires new DB table for credentials and challenge flow. |
+| Recovery Codes | Planned | To be generated after first passkey registration; stored hashed. |
+
+### Passkey Implementation Outline (Planned)
+1. Create `webauthn_credential` table: id (pk), user_id (fk), credential_id (base64url), public_key, counter, transports, created_at.
+2. Add endpoints:
+	- `POST /api/auth/passkey/register/begin` -> returns PublicKeyCredentialCreationOptions + stores challenge (verification table or redis).
+	- `POST /api/auth/passkey/register/complete` -> verifies attestation; stores credential.
+	- `POST /api/auth/passkey/authenticate/begin` & `/complete` for login (future if non-OTP flows added).
+3. Use `@simplewebauthn/server` verify functions. Ensure RP ID = effective domain; derive from env.
+4. Tie into session issuance identical to OTP success.
+5. UI: progressive enhancement button on Profile page (already scaffolded) enabling when feature flag/env set.
+
+Security considerations: enforce origin/RP ID matching, limit registrations per user (e.g., 5), provide delete credential endpoint with recent-auth requirement, and log events.
