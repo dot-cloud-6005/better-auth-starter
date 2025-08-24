@@ -128,9 +128,32 @@ export function LoginForm({
     setIsLoading(true);
     try {
       const res: any = await authClient.signIn.passkey({ email: emailVal });
-      if (!res?.data?.user) throw new Error(res?.error?.message || 'Passkey sign-in failed');
+      if (res?.error) throw new Error(res.error.message || 'Passkey sign-in failed');
+      // Some versions return { data: { session, user } }, others may only return session token in cookie.
+      const hasUser = !!res?.data?.user || !!res?.data?.session || (!res?.error && res?.data);
+      if (!hasUser) throw new Error('Passkey sign-in incomplete');
+      // Small delay to ensure cookie write before navigating
+      await new Promise(r => setTimeout(r, 50));
       toast.success("Signed in");
-      router.push("/landing");
+      // Attempt to fetch active organization to deep-link
+      try {
+        const sessionResp = await fetch('/api/auth/session');
+        if (sessionResp.ok) {
+          const sessionJson: any = await sessionResp.json();
+          const activeOrg = sessionJson?.data?.session?.activeOrganizationId;
+          const orgSlug = sessionJson?.data?.session?.activeOrganization?.slug; // if plugin populates nested
+          if (orgSlug) {
+            router.push(`/${orgSlug}/home`);
+            return;
+          }
+          if (activeOrg) {
+            // Fallback: if we only have ID, go to landing to trigger org resolution
+            router.push('/landing');
+            return;
+          }
+        }
+      } catch { /* ignore and fallback */ }
+      router.push('/landing');
     } catch (e: any) {
       toast.error(e.message || "Passkey failed");
     } finally {
@@ -147,7 +170,24 @@ export function LoginForm({
       try {
         const available = await api.isConditionalMediationAvailable();
         if (!available) return;
-        await authClient.signIn.passkey({ autoFill: true });
+        const res: any = await authClient.signIn.passkey({ autoFill: true });
+        if (!res?.error && (res?.data?.user || res?.data?.session)) {
+          // Redirect similar to manual sign-in
+          setTimeout(async () => {
+            try {
+              const sessionResp = await fetch('/api/auth/session');
+              if (sessionResp.ok) {
+                const sessionJson: any = await sessionResp.json();
+                const orgSlug = sessionJson?.data?.session?.activeOrganization?.slug;
+                if (orgSlug) {
+                  router.push(`/${orgSlug}/home`);
+                  return;
+                }
+              }
+            } catch {}
+            router.push('/landing');
+          }, 25);
+        }
       } catch { /* silent */ }
     })();
   }, []);
