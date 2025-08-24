@@ -118,6 +118,11 @@ export async function Header() {
                 <OptimizedOrganizationSwitcher organizations={organizations} />
               </div>
 
+              {/* Mobile quick logout (footer logout sometimes off-screen) */}
+              <div className="sm:hidden mb-4">
+                <Logout />
+              </div>
+
               {/* Nav items */}
               <MenuRoutes routes={routes} />
             </div>

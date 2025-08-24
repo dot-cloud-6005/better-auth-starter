@@ -17,13 +17,14 @@ export async function POST(req: NextRequest) {
 
     const rpID = process.env.WEBAUTHN_RP_ID || new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").hostname;
 
+    // Some browsers (older iOS) are picky if allowCredentials entries omit type.
     const options = await generateAuthenticationOptions({
       timeout: 60000,
       rpID,
       userVerification: "preferred",
-      // Keep id as base64url string; the browser lib will convert internally
       allowCredentials: creds.map(c => ({
         id: c.credentialId,
+        type: 'public-key',
         transports: c.transports ? (c.transports.split(',') as any) : undefined,
       })),
     });

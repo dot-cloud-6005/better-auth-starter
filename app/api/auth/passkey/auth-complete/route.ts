@@ -22,9 +22,24 @@ export async function POST(req: NextRequest) {
     const rpID = process.env.WEBAUTHN_RP_ID || new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").hostname;
     const origin = (process.env.WEBAUTHN_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
 
-    const authRecord = creds.find(c => c.credentialId === credential.rawId);
+    // iOS sometimes provides rawId as base64url or ArrayBuffer; normalize to base64url for matching
+    const suppliedRawId: string | undefined = (() => {
+      if (!credential?.rawId) return undefined;
+      if (typeof credential.rawId === 'string') return credential.rawId;
+      try { return Buffer.from(credential.rawId as any).toString('base64url'); } catch { return undefined; }
+    })();
+
+    // Try direct, trimmed, and potential padding variants
+    const authRecord = creds.find(c => {
+      if (!suppliedRawId) return false;
+      if (c.credentialId === suppliedRawId) return true;
+      // Some libraries stored without padding while client sends with (or vice versa)
+      const noPad = suppliedRawId.replace(/=+$/,'');
+      const storedNoPad = c.credentialId.replace(/=+$/,'');
+      return storedNoPad === noPad;
+    });
     if (!authRecord) {
-      return NextResponse.json({ message: "Credential not registered" }, { status: 400 });
+      return NextResponse.json({ message: "Credential not registered for user" }, { status: 400 });
     }
 
     // Build authenticator object for library
@@ -45,7 +60,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (!verificationResult.verified || !verificationResult.authenticationInfo) {
-      return NextResponse.json({ message: "Verification failed" }, { status: 400 });
+      return NextResponse.json({ message: "Verification failed", debug: process.env.NODE_ENV !== 'production' ? verificationResult : undefined }, { status: 400 });
     }
 
     // Update counter if advanced security info present
