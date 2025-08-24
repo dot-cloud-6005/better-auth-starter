@@ -5,7 +5,7 @@ import { verification, webauthnCredential, user, session } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { setSessionCookie } from "better-auth/cookies";
-import { auth } from "@/lib/auth";
+import { base64urlToBuffer } from "@/lib/webauthn";
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,20 +23,41 @@ export async function POST(req: NextRequest) {
     const origin = (process.env.WEBAUTHN_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
 
     const authRecord = creds.find(c => c.credentialId === credential.rawId);
-    // TODO: Provide proper authenticator object once correct simplewebauthn v13 typing context verified.
-    const verificationResult = await verifyAuthenticationResponse({
+    if (!authRecord) {
+      return NextResponse.json({ message: "Credential not registered" }, { status: 400 });
+    }
+
+    // Build authenticator object for library
+    const authenticator = {
+      credentialID: base64urlToBuffer(authRecord.credentialId),
+      credentialPublicKey: base64urlToBuffer(authRecord.publicKey),
+      counter: authRecord.counter,
+      transports: authRecord.transports?.split(',') as any,
+    };
+
+  const verificationResult = await (verifyAuthenticationResponse as any)({
       expectedChallenge: challengeRecord.value,
       expectedOrigin: origin,
       expectedRPID: rpID,
       response: credential,
       requireUserVerification: true,
-    } as any);
+      authenticator,
+    });
 
     if (!verificationResult.verified || !verificationResult.authenticationInfo) {
       return NextResponse.json({ message: "Verification failed" }, { status: 400 });
     }
 
-  // Counter update skipped until authenticator typing resolved
+    // Update counter if advanced security info present
+    if (verificationResult.authenticationInfo?.newCounter != null) {
+      await db.update(webauthnCredential)
+        .set({ counter: verificationResult.authenticationInfo.newCounter, updatedAt: new Date(), lastUsedAt: new Date() })
+        .where(eq(webauthnCredential.id, authRecord.id));
+    } else {
+      await db.update(webauthnCredential)
+        .set({ lastUsedAt: new Date(), updatedAt: new Date() })
+        .where(eq(webauthnCredential.id, authRecord.id));
+    }
 
     // Issue session similar to OTP flow
     const u = await db.query.user.findFirst({ where: eq(user.id, userId) });
