@@ -30,6 +30,7 @@ import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
 import { authClient } from "@/lib/auth-client";
+import { AuthTransitionOverlay } from "@/components/auth/auth-transition-overlay";
 
 const requestSchema = z.object({
   email: z.string().email(),
@@ -45,6 +46,7 @@ export function LoginForm({
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<"request" | "verify">("request");
   const [email, setEmail] = useState<string>("");
+  const [transitioning, setTransitioning] = useState(false);
 
   const router = useRouter();
   const requestForm = useForm<z.infer<typeof requestSchema>>({
@@ -134,26 +136,22 @@ export function LoginForm({
       if (!hasUser) throw new Error('Passkey sign-in incomplete');
       // Small delay to ensure cookie write before navigating
       await new Promise(r => setTimeout(r, 50));
+      setTransitioning(true);
       toast.success("Signed in");
-      // Attempt to fetch active organization to deep-link
+      // Fetch lightweight session-info for org slug (timeout 1.5s)
+      const controller = new AbortController();
+      const to = setTimeout(() => controller.abort(), 1500);
+      let orgSlug: string | null = null;
       try {
-        const sessionResp = await fetch('/api/auth/session');
-        if (sessionResp.ok) {
-          const sessionJson: any = await sessionResp.json();
-          const activeOrg = sessionJson?.data?.session?.activeOrganizationId;
-          const orgSlug = sessionJson?.data?.session?.activeOrganization?.slug; // if plugin populates nested
-          if (orgSlug) {
-            router.push(`/${orgSlug}/home`);
-            return;
-          }
-          if (activeOrg) {
-            // Fallback: if we only have ID, go to landing to trigger org resolution
-            router.push('/landing');
-            return;
-          }
+        const info = await fetch('/api/session-info', { signal: controller.signal });
+        if (info.ok) {
+          const json: any = await info.json();
+          orgSlug = json.orgSlug || null;
         }
-      } catch { /* ignore and fallback */ }
-      router.push('/landing');
+      } catch { /* ignore */ } finally { clearTimeout(to); }
+      setTimeout(() => {
+        if (orgSlug) router.push(`/${orgSlug}/home`); else router.push('/landing');
+      }, 250); // brief overlay display
     } catch (e: any) {
       toast.error(e.message || "Passkey failed");
     } finally {
@@ -172,21 +170,18 @@ export function LoginForm({
         if (!available) return;
         const res: any = await authClient.signIn.passkey({ autoFill: true });
         if (!res?.error && (res?.data?.user || res?.data?.session)) {
-          // Redirect similar to manual sign-in
-          setTimeout(async () => {
+          setTransitioning(true);
+          const controller = new AbortController();
+          const to = setTimeout(() => controller.abort(), 1500);
+            let orgSlug: string | null = null;
             try {
-              const sessionResp = await fetch('/api/auth/session');
-              if (sessionResp.ok) {
-                const sessionJson: any = await sessionResp.json();
-                const orgSlug = sessionJson?.data?.session?.activeOrganization?.slug;
-                if (orgSlug) {
-                  router.push(`/${orgSlug}/home`);
-                  return;
-                }
+              const info = await fetch('/api/session-info', { signal: controller.signal });
+              if (info.ok) {
+                const json: any = await info.json();
+                orgSlug = json.orgSlug || null;
               }
-            } catch {}
-            router.push('/landing');
-          }, 25);
+            } catch { /* ignore */ } finally { clearTimeout(to); }
+          setTimeout(() => { if (orgSlug) router.push(`/${orgSlug}/home`); else router.push('/landing'); }, 200);
         }
       } catch { /* silent */ }
     })();
@@ -325,6 +320,7 @@ export function LoginForm({
           )}
         </CardContent>
       </Card>
+  <AuthTransitionOverlay active={transitioning} />
       <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs md:text-sm text-balance *:[a]:underline *:[a]:underline-offset-4">
         <div className="mx-auto inline-block max-w-[46ch] md:max-w-[60ch] text-left">
           <p className="mb-1 font-medium text-foreground/80">How sign‑in works</p>
