@@ -63,9 +63,27 @@ export const webauthnCredential = appSchema.table("webauthn_credential", {
     transports: text('transports'),
     deviceType: text('device_type'), // singleDevice | multiDevice (from verification result)
     backedUp: boolean('backed_up'),
+    // Added fields to align with better-auth passkey plugin optional schema
+    name: text('name'), // user-assigned label
+    aaguid: text('aaguid'), // authenticator AAGUID if available
     createdAt: timestamp('created_at').$defaultFn(() => /* @__PURE__ */ new Date()).notNull(),
     updatedAt: timestamp('updated_at').$defaultFn(() => /* @__PURE__ */ new Date()).notNull(),
     lastUsedAt: timestamp('last_used_at')
+});
+
+// New passkey table required by better-auth passkey plugin
+export const passkey = appSchema.table("passkey", {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    publicKey: text('public_key').notNull(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    credentialID: text('credential_id').notNull().unique(),
+    counter: integer('counter').default(0).notNull(),
+    deviceType: text('device_type'),
+    backedUp: boolean('backed_up'),
+    transports: text('transports'),
+    createdAt: timestamp('created_at').$defaultFn(() => /* @__PURE__ */ new Date()).notNull(),
+    aaguid: text('aaguid')
 });
 
 export const organization = appSchema.table("organization", {
@@ -202,6 +220,7 @@ export const schema = {
   account,
   verification,
     webauthnCredential,
+    passkey,
   organization,
   member,
   invitation,

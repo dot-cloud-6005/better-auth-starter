@@ -1,6 +1,5 @@
 "use client";
 
-import { startAuthentication } from "@simplewebauthn/browser";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
@@ -29,6 +28,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
+import { useEffect } from "react";
+import { authClient } from "@/lib/auth-client";
 
 const requestSchema = z.object({
   email: z.string().email(),
@@ -126,20 +127,8 @@ export function LoginForm({
     }
     setIsLoading(true);
     try {
-      const begin = await fetch("/api/auth/passkey/auth-begin", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: emailVal }),
-      });
-      if (!begin.ok) throw new Error("No passkeys for that email");
-      const { options, userId } = await begin.json();
-      const assertion = await startAuthentication(options);
-      const complete = await fetch("/api/auth/passkey/auth-complete", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId, credential: assertion }),
-      });
-      if (!complete.ok) throw new Error("Passkey sign-in failed");
+      const res: any = await authClient.signIn.passkey({ email: emailVal });
+      if (!res?.data?.user) throw new Error(res?.error?.message || 'Passkey sign-in failed');
       toast.success("Signed in");
       router.push("/landing");
     } catch (e: any) {
@@ -148,6 +137,20 @@ export function LoginForm({
       setIsLoading(false);
     }
   }
+
+  // Conditional UI preload
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const api = (window as any).PublicKeyCredential;
+    if (!api || !api.isConditionalMediationAvailable) return;
+    (async () => {
+      try {
+        const available = await api.isConditionalMediationAvailable();
+        if (!available) return;
+        await authClient.signIn.passkey({ autoFill: true });
+      } catch { /* silent */ }
+    })();
+  }, []);
 
   return (
     <div
@@ -184,6 +187,7 @@ export function LoginForm({
                             <FormControl>
                               <Input
                                 placeholder="@ventia.com"
+                                autoComplete="username webauthn"
                                 className="text-base md:text-lg md:h-12"
                                 {...field}
                               />

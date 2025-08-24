@@ -1,5 +1,6 @@
 import { organizationClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
+import { passkeyClient } from "better-auth/client/plugins"
 
 // Prefer same-origin in the browser to avoid cross-origin calls in production.
 // On the server (SSR), fall back to an env-configured absolute URL.
@@ -11,5 +12,5 @@ const clientBaseURL =
 
 export const authClient = createAuthClient({
     baseURL: clientBaseURL,
-    plugins: [organizationClient()],
+    plugins: [organizationClient(), passkeyClient()]
 });

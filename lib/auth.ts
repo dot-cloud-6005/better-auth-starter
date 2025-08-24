@@ -8,6 +8,7 @@ import { getActiveOrganization } from "@/server/organizations";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins";
+import { passkey } from "better-auth/plugins/passkey"; // per docs; if missing will error
 import { render } from "@react-email/render";
 import { sendGraphMail } from "@/lib/msgraph";
 import { admin, member, owner } from "./auth/permissions";
@@ -78,7 +79,14 @@ export const auth = betterAuth({
         provider: "pg",
         schema,
     }),
-    plugins: [organization({
+    plugins: [
+        passkey({
+            rpID: process.env.WEBAUTHN_RP_ID || new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").hostname,
+            rpName: process.env.NEXT_PUBLIC_APP_NAME || "App",
+            origin: (process.env.WEBAUTHN_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, ""),
+            authenticatorSelection: { residentKey: "preferred", userVerification: "preferred" },
+        }),
+        organization({
         async sendInvitationEmail(data) {
             const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL}/api/accept-invitation/${data.id}`
             const html = await render(

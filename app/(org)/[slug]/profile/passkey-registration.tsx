@@ -1,6 +1,6 @@
 "use client";
-import { startRegistration } from '@simplewebauthn/browser';
 import { useState, useCallback } from 'react';
+import { authClient } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
@@ -19,12 +19,8 @@ export default function PasskeyRegistration() {
     setLoading(true);
     setJustAdded(false);
     try {
-      const beginRes = await fetch('/api/auth/passkey/register-begin', { method: 'POST' });
-      if (!beginRes.ok) throw new Error('Failed to start');
-      const { options } = await beginRes.json();
-      const attestation = await startRegistration(options);
-      const complete = await fetch('/api/auth/passkey/register-complete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(attestation) });
-      if (!complete.ok) throw new Error('Passkey registration failed');
+      const res: any = await authClient.passkey.addPasskey();
+      if (!res?.data?.success) throw new Error(res?.error?.message || 'Passkey registration failed');
       toast.success('Passkey added');
       setJustAdded(true);
     } catch (e: any) {
@@ -41,7 +37,7 @@ export default function PasskeyRegistration() {
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">Register a device-based passkey for faster, phishing-resistant sign-in.</p>
-      <Button type="button" size="sm" disabled={loading} onClick={register}>
+  <Button type="button" size="sm" disabled={loading} onClick={register}>
         {loading ? 'Adding…' : 'Add Passkey'}
       </Button>
       {justAdded && <p className="text-xs text-green-600 dark:text-green-400">Passkey registered.</p>}

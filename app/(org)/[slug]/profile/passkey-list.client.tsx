@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from 'react';
+import { authClient } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -22,10 +23,19 @@ export function PasskeyList() {
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/passkey/credentials', { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to load');
-      const data = await res.json();
-      setItems(data.credentials || []);
+      const res: any = await authClient.passkey.listUserPasskeys();
+      if (!res?.data?.passkeys) throw new Error(res?.error?.message || 'Failed to load');
+      // plugin returns passkeys with credentialID casing; normalize to existing shape for UI reuse
+      const norm = res.data.passkeys.map((p: any) => ({
+        id: p.id,
+        credentialId: p.credentialID,
+        transports: p.transports?.split(',')?.filter(Boolean) || [],
+        deviceType: p.deviceType || null,
+        backedUp: p.backedUp ?? null,
+        createdAt: p.createdAt,
+        lastUsedAt: null,
+      }));
+      setItems(norm);
     } catch (e: any) {
       toast.error(e.message || 'Could not load passkeys');
     } finally { setLoading(false); }
@@ -35,8 +45,10 @@ export function PasskeyList() {
     if (!confirm('Remove this passkey?')) return;
     setRemoving(credentialId);
     try {
-      const res = await fetch('/api/auth/passkey/credentials', { method: 'DELETE', headers:{'content-type':'application/json'}, body: JSON.stringify({ credentialId }) });
-      if (!res.ok) throw new Error('Delete failed');
+      const target = items.find(i => i.credentialId === credentialId);
+      if (!target) throw new Error('Unknown passkey');
+      const res: any = await authClient.passkey.deletePasskey({ id: target.id });
+      if (!res?.data?.success) throw new Error(res?.error?.message || 'Delete failed');
       toast.success('Passkey removed');
       setItems(prev => prev.filter(p => p.credentialId !== credentialId));
     } catch (e:any) { toast.error(e.message || 'Failed removing'); } finally { setRemoving(null); }
