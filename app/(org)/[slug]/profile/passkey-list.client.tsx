@@ -24,18 +24,19 @@ export function PasskeyList() {
     setLoading(true);
     try {
       const res: any = await authClient.passkey.listUserPasskeys();
-      if (!res?.data?.passkeys) throw new Error(res?.error?.message || 'Failed to load');
-      // plugin returns passkeys with credentialID casing; normalize to existing shape for UI reuse
-      const norm = res.data.passkeys.map((p: any) => ({
+      const passkeys = res?.data?.passkeys ?? res?.data ?? [];
+      if (!Array.isArray(passkeys)) throw new Error(res?.error?.message || 'Failed to load passkeys');
+      const norm = passkeys.map((p: any) => ({
         id: p.id,
-        credentialId: p.credentialID,
-        transports: p.transports?.split(',')?.filter(Boolean) || [],
+        credentialId: p.credentialID || p.credentialId || p.id,
+        transports: (Array.isArray(p.transports) ? p.transports : (typeof p.transports === 'string' ? p.transports.split(',') : []))
+          .filter(Boolean),
         deviceType: p.deviceType || null,
         backedUp: p.backedUp ?? null,
-        createdAt: p.createdAt,
-        lastUsedAt: null,
+        createdAt: p.createdAt || new Date().toISOString(),
+        lastUsedAt: p.lastUsedAt || null,
       }));
-      setItems(norm);
+      setItems(norm.sort((a,b) => a.createdAt.localeCompare(b.createdAt)));
     } catch (e: any) {
       toast.error(e.message || 'Could not load passkeys');
     } finally { setLoading(false); }
@@ -54,7 +55,12 @@ export function PasskeyList() {
     } catch (e:any) { toast.error(e.message || 'Failed removing'); } finally { setRemoving(null); }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    function onRefresh() { load(); }
+    window.addEventListener('passkey:refresh', onRefresh);
+    return () => window.removeEventListener('passkey:refresh', onRefresh);
+  }, []);
 
   if (loading) return <div className="text-xs text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin"/> Loading passkeys…</div>;
   if (!items.length) return <p className="text-xs text-muted-foreground">No passkeys registered yet.</p>;

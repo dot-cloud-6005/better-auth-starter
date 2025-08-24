@@ -23,6 +23,10 @@ export default function PasskeyRegistration() {
       if (!res?.data?.success) throw new Error(res?.error?.message || 'Passkey registration failed');
       toast.success('Passkey added');
       setJustAdded(true);
+      // Notify any listeners (e.g., PasskeyList) to refresh without full page reload
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('passkey:refresh'));
+      }
     } catch (e: any) {
       toast.error(e.message || 'Error adding passkey');
     } finally {
