@@ -5,7 +5,7 @@ import { getActiveOrganization, getOrganizations } from "@/server/organizations"
 import { getOrganizationBySlug } from "@/server/organizations";
 import { getCurrentUser, isMasterAdmin } from "@/server/users";
 import { Menu, Building2, User as UserIcon } from "lucide-react";
-import { MenuRoutes, type MenuRoute } from "@/components/menu-routes";
+import { MenuRoutes, type MenuItem } from "@/components/menu-routes";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export async function Header() {
@@ -21,29 +21,42 @@ export async function Header() {
 
   // Build allowed org routes based on permissions
   const baseSlug = activeOrg?.slug || organizations[0]?.slug;
-  const routes: MenuRoute[] = [];
+  const menuItems: MenuItem[] = [];
   if (baseSlug) {
-    routes.push({ href: `/${baseSlug}/home`, label: 'Home', icon: 'home' });
-    routes.push({ href: `/${baseSlug}/nav-map`, label: 'Navigation Map', icon: 'map' });
-    routes.push({ href: `/${baseSlug}/storage`, label: 'Storage', icon: 'storage' });
-    routes.push({ href: `/${baseSlug}/plant-equip/plant`, label: 'Plant', icon: 'truck' });
-  // Use icon key 'equipment' which maps to the Wrench icon in menu-routes
-  routes.push({ href: `/${baseSlug}/plant-equip/equipment`, label: 'Equipment', icon: 'equipment' });
-    routes.push({ href: `/${baseSlug}/plant-equip/inspections`, label: 'Inspections', icon: 'list' });
-    routes.push({ href: `/${baseSlug}/plant-equip/analytics`, label: 'Analytics', icon: 'analytics' });
-  // Profile route intentionally hidden for production testing of Passkeys
-  // Restore by uncommenting below when ready to expose to users.
-  // routes.push({ href: `/${baseSlug}/profile`, label: 'Profile & Security', icon: 'profile' });
+    // Top-level routes
+    menuItems.push({ href: `/${baseSlug}/home`, label: 'Home', icon: 'home' });
+    menuItems.push({ href: `/${baseSlug}/nav-map`, label: 'Navigation Map', icon: 'map' });
+    menuItems.push({ href: `/${baseSlug}/storage`, label: 'Storage', icon: 'storage' });
+    
+    // Plant & Equipment group (collapsed by default)
+    menuItems.push({
+      label: 'Plant & Equipment',
+      icon: 'equipment',
+      defaultCollapsed: true,
+      routes: [
+        { href: `/${baseSlug}/plant-equip/plant`, label: 'Plant', icon: 'truck' },
+        { href: `/${baseSlug}/plant-equip/equipment`, label: 'Equipment', icon: 'equipment' },
+        { href: `/${baseSlug}/plant-equip/inspections`, label: 'Inspections', icon: 'list' },
+        { href: `/${baseSlug}/plant-equip/analytics`, label: 'Analytics', icon: 'analytics' },
+      ]
+    });
+    
+    menuItems.push({ href: `/${baseSlug}/docs`, label: 'Docs', icon: 'docs' });
+    
+    // Profile route intentionally hidden for production testing of Passkeys
+    // Restore by uncommenting below when ready to expose to users.
+    // menuItems.push({ href: `/${baseSlug}/profile`, label: 'Profile & Security', icon: 'profile' });
+    
     // Only show Admin for org owners/admins
     const orgFull = await getOrganizationBySlug(baseSlug);
     const hasOrgAdminAccess = !!orgFull?.members?.some((m: any) => m.userId === currentUser.id && (m.role === 'owner' || m.role === 'admin'));
     if (hasOrgAdminAccess) {
-      routes.push({ href: `/${baseSlug}/admin`, label: 'Admin', icon: 'admin' });
+      menuItems.push({ href: `/${baseSlug}/admin`, label: 'Admin', icon: 'admin' });
     }
   }
-  // Append Super Admin route only for master in the same list to keep spacing consistent
+  // Append Super Admin route only for master
   if (master) {
-    routes.push({ href: `/super-admin`, label: 'Super Admin', icon: 'superAdmin' });
+    menuItems.push({ href: `/super-admin`, label: 'Super Admin', icon: 'superAdmin' });
   }
 
   return (
@@ -114,17 +127,12 @@ export async function Header() {
               </div>
 
               {/* Mobile: org switcher */}
-              <div className="sm:hidden mb-3">
+              <div className="sm:hidden mb-4">
                 <OptimizedOrganizationSwitcher organizations={organizations} />
               </div>
 
-              {/* Mobile quick logout (footer logout sometimes off-screen) */}
-              <div className="sm:hidden mb-4">
-                <Logout />
-              </div>
-
               {/* Nav items */}
-              <MenuRoutes routes={routes} />
+              <MenuRoutes items={menuItems} />
             </div>
 
             {/* Footer */}

@@ -1,11 +1,26 @@
 import type { NextConfig } from "next";
+// MDX support
+import createMDX from '@next/mdx';
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  pageExtensions: ["ts","tsx","js","jsx","mdx"],
   eslint: {
     // Run ESLint checks during builds
     ignoreDuringBuilds: false,
+  },
+  
+  // Performance optimizations
+  experimental: {
+    optimizePackageImports: [
+      'lucide-react',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-select',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-toast',
+    ],
+    webpackBuildWorker: true,
   },
   
   // Security headers
@@ -60,4 +75,8 @@ const nextConfig: NextConfig = {
   }
 };
 
-export default nextConfig;
+const withMDX = createMDX({
+  extension: /\.mdx?$/,
+});
+
+export default withMDX(nextConfig);

@@ -505,7 +505,7 @@ export default function InspectionsClient({ orgId, orgSlug, initialEquipment, in
 
       <Tabs value={activeTab} onValueChange={v => setActiveTab(v as any)} className="space-y-4">
         <TabsList className="grid grid-cols-2 w-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-400">
-          <TabsTrigger value="overview" className="data-[state=active]:bg-white data-[state=active]:text-slate-900 dark:data-[state=active]:bg-slate-700 dark:data-[state=active]:text-slate-100">Items</TabsTrigger>
+          <TabsTrigger value="overview" className="data-[state=active]:bg-white data-[state=active]:text-slate-900 dark:data-[state=active]:bg-slate-700 dark:data-[state=active]:text-slate-100">Plant & Equipment</TabsTrigger>
           <TabsTrigger value="history" className="data-[state=active]:bg-white data-[state=active]:text-slate-900 dark:data-[state=active]:bg-slate-700 dark:data-[state=active]:text-slate-100">History</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="space-y-3">
@@ -589,7 +589,7 @@ export default function InspectionsClient({ orgId, orgSlug, initialEquipment, in
         <TabsContent value="history" className="space-y-3">
           <div className="flex flex-col md:flex-row gap-3 items-start md:items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Unified Inspection History</h2>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Inspection History</h2>
               <p className="text-xs text-slate-600 dark:text-slate-400">First 50 records</p>
             </div>
             <div className="flex gap-2">

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getOrganizationBySlug } from "@/server/organizations";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Map, Wrench, ClipboardList, BarChart3, Building2 } from "lucide-react";
+import { Map, Wrench, ClipboardList, BarChart3, Building2, BookOpen } from "lucide-react";
 
 type Params = Promise<{ slug: string }>;
 
@@ -19,7 +19,7 @@ export default async function OrgHome({ params }: { params: Params }) {
       </div>
 
       <Tabs defaultValue="navigation" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="navigation" className="flex items-center gap-2">
             <Map className="h-4 w-4" /> Navigation
           </TabsTrigger>
@@ -29,13 +29,16 @@ export default async function OrgHome({ params }: { params: Params }) {
           <TabsTrigger value="plant-equipment" className="flex items-center gap-2">
             <Wrench className="h-4 w-4" /> Plant & Equipment
           </TabsTrigger>
+          <TabsTrigger value="help" className="flex items-center gap-2">
+            <BookOpen className="h-4 w-4" /> Help
+          </TabsTrigger>
         </TabsList>
 
         {/* Navigation tab */}
         <TabsContent value="navigation">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Card className="hover:shadow-md transition-shadow">
-              <Link href={`/${slug}/nav-map`} className="block focus:outline-hidden">
+              <Link href={`/${slug}/nav-map`} className="block focus:outline-hidden" prefetch={true}>
                 <CardHeader>
                   <CardTitle>Navigation Map</CardTitle>
                   <CardDescription>
@@ -65,7 +68,7 @@ export default async function OrgHome({ params }: { params: Params }) {
         <TabsContent value="plant-equipment">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Card className="hover:shadow-md transition-shadow">
-              <Link href={`/${slug}/plant-equip/equipment`} className="block focus:outline-hidden">
+              <Link href={`/${slug}/plant-equip/equipment`} className="block focus:outline-hidden" prefetch={true}>
                 <CardHeader>
                   <CardTitle>Equipment</CardTitle>
                   <CardDescription>Manage equipment, groups, and schedules.</CardDescription>
@@ -73,7 +76,7 @@ export default async function OrgHome({ params }: { params: Params }) {
               </Link>
             </Card>
             <Card className="hover:shadow-md transition-shadow">
-              <Link href={`/${slug}/plant-equip/plant`} className="block focus:outline-hidden">
+              <Link href={`/${slug}/plant-equip/plant`} className="block focus:outline-hidden" prefetch={true}>
                 <CardHeader>
                   <CardTitle>Plant</CardTitle>
                   <CardDescription>Manage plant assets and maintenance.</CardDescription>
@@ -81,7 +84,7 @@ export default async function OrgHome({ params }: { params: Params }) {
               </Link>
             </Card>
             <Card className="hover:shadow-md transition-shadow">
-              <Link href={`/${slug}/plant-equip/inspections`} className="block focus:outline-hidden">
+              <Link href={`/${slug}/plant-equip/inspections`} className="block focus:outline-hidden" prefetch={true}>
                 <CardHeader>
                   <div className="flex items-center gap-2">
                     <ClipboardList className="h-4 w-4 text-muted-foreground" />
@@ -92,7 +95,7 @@ export default async function OrgHome({ params }: { params: Params }) {
               </Link>
             </Card>
             <Card className="hover:shadow-md transition-shadow">
-              <Link href={`/${slug}/plant-equip/analytics`} className="block focus:outline-hidden">
+              <Link href={`/${slug}/plant-equip/analytics`} className="block focus:outline-hidden" prefetch={true}>
                 <CardHeader>
                   <div className="flex items-center gap-2">
                     <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -100,6 +103,37 @@ export default async function OrgHome({ params }: { params: Params }) {
                   </div>
                   <CardDescription>Compliance status, trends, and schedules.</CardDescription>
                 </CardHeader>
+              </Link>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Help tab */}
+        <TabsContent value="help">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card className="hover:shadow-md transition-shadow">
+              <Link href={`/${slug}/docs`} className="block focus:outline-hidden" prefetch={true}>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-primary" />
+                    User Guide
+                  </CardTitle>
+                  <CardDescription>
+                    Comprehensive step-by-step help for using the system. Written in Australian English for clarity.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <div>• Getting started guide</div>
+                    <div>• Equipment & plant management</div>
+                    <div>• Passkey authentication</div>
+                    <div>• Navigation map usage</div>
+                    <div>• Inspections & compliance</div>
+                    <div>• Analytics & reporting</div>
+                    <div>• Storage & documents</div>
+                    <div>• Troubleshooting & support</div>
+                  </div>
+                </CardContent>
               </Link>
             </Card>
           </div>

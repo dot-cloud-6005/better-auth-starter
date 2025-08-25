@@ -44,6 +44,7 @@ export function LoginForm({
   ...props
 }: React.ComponentProps<"div">) {
   const [isLoading, setIsLoading] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [step, setStep] = useState<"request" | "verify">("request");
   const [email, setEmail] = useState<string>("");
   const [transitioning, setTransitioning] = useState(false);
@@ -127,7 +128,7 @@ export function LoginForm({
       toast.error("Enter email first");
       return;
     }
-    setIsLoading(true);
+  setPasskeyLoading(true);
     try {
       const res: any = await authClient.signIn.passkey({ email: emailVal });
       if (res?.error) throw new Error(res.error.message || 'Passkey sign-in failed');
@@ -155,7 +156,7 @@ export function LoginForm({
     } catch (e: any) {
       toast.error(e.message || "Passkey failed");
     } finally {
-      setIsLoading(false);
+      setPasskeyLoading(false);
     }
   }
 
@@ -232,30 +233,35 @@ export function LoginForm({
                         )}
                       />
                     </div>
-                    <Button
-                      type="submit"
-                      className="w-full md:h-12 md:text-base"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? (
-                        <Loader2 className="size-4 md:size-5 animate-spin" />
-                      ) : (
-                        "Send code"
-                      )}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full md:h-12 md:text-base"
-                      disabled={isLoading}
-                      onClick={tryPasskey}
-                    >
-                      {isLoading ? (
-                        <Loader2 className="size-4 md:size-5 animate-spin" />
-                      ) : (
-                        "Use Passkey"
-                      )}
-                    </Button>
+                    <div className="grid gap-2">
+                      <Button
+                        type="submit"
+                        className="w-full md:h-12 md:text-base"
+                        disabled={isLoading || passkeyLoading}
+                      >
+                        {isLoading ? (
+                          <Loader2 className="size-4 md:size-5 animate-spin" />
+                        ) : (
+                          "Send code"
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full md:h-12 md:text-base"
+                        disabled={isLoading || passkeyLoading}
+                        onClick={tryPasskey}
+                      >
+                        {passkeyLoading ? (
+                          <Loader2 className="size-4 md:size-5 animate-spin" />
+                        ) : (
+                          "Use Passkey"
+                        )}
+                      </Button>
+                      <p className="text-[11px] md:text-xs text-muted-foreground text-left">
+                        Passkey sign-in works after you add a passkey under Profile → Security.
+                      </p>
+                    </div>
                   </div>
                   <div className="text-center text-sm md:text-base">
                     Don&apos;t have an account?{" "}
@@ -325,17 +331,14 @@ export function LoginForm({
         <div className="mx-auto inline-block max-w-[46ch] md:max-w-[60ch] text-left">
           <p className="mb-1 font-medium text-foreground/80">How sign‑in works</p>
           <ol className="list-decimal space-y-1 md:space-y-1.5 pl-5">
-            <li>Enter your work email and select “Send code”.</li>
-            <li>Check your inbox for a 6‑digit code (valid for a few minutes).</li>
-            <li>Enter the code and select “Verify &amp; sign in”.</li>
-            <li>
-              If you have one organisation, you’ll go straight to its home.
-              If you have several, pick one and continue.
-            </li>
-            <li>If something looks wrong, choose “Use a different email” to try again.</li>
+            <li>Enter your work email and choose “Send code” (first time users start here).</li>
+            <li>We email a 6‑digit code; enter it to finish sign‑in.</li>
+            <li>Once signed in, you can add a Passkey in Profile → Security for future 1‑tap sign‑ins.</li>
+            <li>After a passkey is added, you can select “Use Passkey” (or it may appear automatically).</li>
+            <li>If you belong to several organisations, you’ll pick one after signing in.</li>
           </ol>
           <p className="mt-2 text-[11px] md:text-xs">
-            Tip: If you don’t see the email, check spam/junk and ensure your inbox accepts external mail.
+            Tip: If you don’t see the email, check spam/junk. Passkeys can only be used after initial OTP login.
           </p>
         </div>
       </div>

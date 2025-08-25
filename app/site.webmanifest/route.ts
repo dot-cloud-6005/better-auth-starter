@@ -3,8 +3,8 @@ export const runtime = 'nodejs'
 export async function GET(request: Request) {
   // Serve the manifest with the correct content type to avoid browser syntax errors
   const body = {
-    name: '',
-    short_name: '',
+    name: 'SafetyHub',
+    short_name: 'SafetyHub',
     icons: [
       { src: '/android-chrome-192x192.png', sizes: '192x192', type: 'image/png' },
       { src: '/android-chrome-512x512.png', sizes: '512x512', type: 'image/png' },
