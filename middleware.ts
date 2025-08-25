@@ -53,7 +53,9 @@ export async function middleware(request: NextRequest) {
     try {
         const isProd = process.env.NODE_ENV === "production";
 
-        const scriptSrc = "script-src 'self' 'unsafe-inline'" + (isProd ? "" : " 'unsafe-eval'") + " blob: data:";
+        // WebAssembly (sql.js) requires specific CSP directives
+        // 'wasm-unsafe-eval' for modern browsers, 'unsafe-eval' for compatibility
+        const scriptSrc = "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'unsafe-eval' blob: data:";
         // Dynamically include Supabase origin if configured, so fetch/redirects to Supabase aren't blocked by CSP
         const supabaseOrigin = (() => {
             const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
