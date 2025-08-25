@@ -1429,26 +1429,51 @@ export default function MapPage() {
       )}
 
       <div className="min-h-[calc(100vh-64px)] w-full grid grid-rows-[auto_1fr] gap-2">
-  <div className="flex items-center justify-between gap-2 py-2 px-2 sm:px-4">
-        <div className="flex items-center gap-2">
-          <h1 className="hidden sm:block text-lg font-semibold pr-3">Assets Map</h1>
-          {/* Mobile search (left-aligned) */}
-          <div className="flex sm:hidden items-center gap-2">
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              placeholder="Asset #"
-              className="w-28 sm:w-36 px-2 py-1.5 text-sm rounded border border-gray-300 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-100 dark:placeholder-neutral-500"
-              value={searchId}
-              onChange={(e) => {
-                // keep only digits
-                const digits = e.target.value.replace(/[^0-9]/g, "");
-                setSearchId(digits);
-                if (searchError) setSearchError(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
+  <div className="bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-700 px-2 py-2">
+        {/* Primary row - Essential controls */}
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2">
+            <h1 className="hidden lg:block text-lg font-semibold">Assets Map</h1>
+            <h1 className="hidden sm:block lg:hidden text-base font-semibold">Map</h1>
+            
+            {/* Unified search - single implementation for all screen sizes */}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="Asset #"
+                className="w-20 sm:w-24 md:w-28 lg:w-32 px-2 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-100 dark:placeholder-neutral-500"
+                value={searchId}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/[^0-9]/g, "");
+                  setSearchId(digits);
+                  if (searchError) setSearchError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const id = Number(searchId);
+                    if (!searchId || !Number.isFinite(id)) {
+                      setSearchError("Enter a valid Asset #");
+                      return;
+                    }
+                    const asset = assetsRef.current.find((a) => a.Asset_Number === id);
+                    if (!asset) {
+                      setSearchError("Asset not found");
+                      return;
+                    }
+                    const map = mapRef.current;
+                    if (map) {
+                      const currentZoom = map.getZoom ? map.getZoom() : 0;
+                      const targetZoom = Math.max(16, Number.isFinite(currentZoom) ? currentZoom : 0);
+                      map.easeTo({ center: [asset.Longitude, asset.Latitude], zoom: targetZoom, duration: 600 });
+                    }
+                  }
+                }}
+                aria-label="Search by Asset Number"
+              />
+              <button
+                onClick={() => {
                   const id = Number(searchId);
                   if (!searchId || !Number.isFinite(id)) {
                     setSearchError("Enter a valid Asset #");
@@ -1459,121 +1484,37 @@ export default function MapPage() {
                     setSearchError("Asset not found");
                     return;
                   }
+                  setSearchError(null);
                   const map = mapRef.current;
                   if (map) {
                     const currentZoom = map.getZoom ? map.getZoom() : 0;
                     const targetZoom = Math.max(16, Number.isFinite(currentZoom) ? currentZoom : 0);
                     map.easeTo({ center: [asset.Longitude, asset.Latitude], zoom: targetZoom, duration: 600 });
                   }
-                }
-              }}
-              aria-label="Search by Asset Number"
-            />
-            <button
-              onClick={() => {
-                const id = Number(searchId);
-                if (!searchId || !Number.isFinite(id)) {
-                  setSearchError("Enter a valid Asset #");
-                  return;
-                }
-                const asset = assetsRef.current.find((a) => a.Asset_Number === id);
-                if (!asset) {
-                  setSearchError("Asset not found");
-                  return;
-                }
-                setSearchError(null);
-                const map = mapRef.current;
-                if (map) {
-                  const currentZoom = map.getZoom ? map.getZoom() : 0;
-                  const targetZoom = Math.max(16, Number.isFinite(currentZoom) ? currentZoom : 0);
-                  map.easeTo({ center: [asset.Longitude, asset.Latitude], zoom: targetZoom, duration: 600 });
-                }
-              }}
-              className="px-3 py-1.5 rounded border text-sm bg-white border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200 dark:hover:bg-neutral-700"
-            >
-              Go
-            </button>
+                }}
+                className="px-3 py-2 rounded-lg border text-sm font-medium bg-blue-500 border-blue-500 text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:bg-blue-600 dark:border-blue-600 dark:hover:bg-blue-700 transition-colors"
+              >
+                Go
+              </button>
+            </div>
           </div>
-  </div>
-    {/* Right group: controls + desktop search */}
-  <div className="flex items-center gap-3 pr-4 sm:pr-6">
-          {/* Desktop search (hidden on mobile), centered-ish by flex distribution */}
-          <div className="hidden sm:flex items-center gap-2 mx-auto">
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              placeholder="Asset #"
-              className="w-28 sm:w-36 px-2 py-1.5 text-sm rounded border border-gray-300 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-100 dark:placeholder-neutral-500"
-              value={searchId}
-              onChange={(e) => {
-                const digits = e.target.value.replace(/[^0-9]/g, "");
-                setSearchId(digits);
-                if (searchError) setSearchError(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  const id = Number(searchId);
-                  if (!searchId || !Number.isFinite(id)) {
-                    setSearchError("Enter a valid Asset #");
-                    return;
-                  }
-                  const asset = assetsRef.current.find((a) => a.Asset_Number === id);
-                  if (!asset) {
-                    setSearchError("Asset not found");
-                    return;
-                  }
-                  const map = mapRef.current;
-                  if (map) {
-                    const currentZoom = map.getZoom ? map.getZoom() : 0;
-                    const targetZoom = Math.max(16, Number.isFinite(currentZoom) ? currentZoom : 0);
-                    map.easeTo({ center: [asset.Longitude, asset.Latitude], zoom: targetZoom, duration: 600 });
-                  }
-                }
-              }}
-              aria-label="Search by Asset Number"
-            />
+
+          {/* Primary controls - Always visible with improved mobile sizing */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Locate button - icon only on mobile, better sizing */}
             <button
-              onClick={() => {
-                const id = Number(searchId);
-                if (!searchId || !Number.isFinite(id)) {
-                  setSearchError("Enter a valid Asset #");
-                  return;
-                }
-                const asset = assetsRef.current.find((a) => a.Asset_Number === id);
-                if (!asset) {
-                  setSearchError("Asset not found");
-                  return;
-                }
-                setSearchError(null);
-                const map = mapRef.current;
-                if (map) {
-                  const currentZoom = map.getZoom ? map.getZoom() : 0;
-                  const targetZoom = Math.max(16, Number.isFinite(currentZoom) ? currentZoom : 0);
-                  map.easeTo({ center: [asset.Longitude, asset.Latitude], zoom: targetZoom, duration: 600 });
-                }
-              }}
-              className="px-3 py-1.5 rounded border text-sm bg-white border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200 dark:hover:bg-neutral-700"
+              onClick={recenterToUser}
+              className={`min-w-[44px] min-h-[44px] rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 flex items-center justify-center px-2 sm:px-3 transition-colors ${
+                isFollowingUser 
+                  ? "bg-blue-500 border-blue-500 text-white hover:bg-blue-600 dark:bg-blue-600 dark:border-blue-600 dark:hover:bg-blue-700" 
+                  : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200 dark:hover:bg-neutral-700"
+              }`}
+              title={isFollowingUser ? "Following your location (pan to stop)" : "Center on my location"}
+              aria-label={isFollowingUser ? "Following location" : "Locate me"}
             >
-              Go
-            </button>
-          </div>
-          {/* Locate button: icon on mobile, text on desktop */}
-          <button
-            onClick={recenterToUser}
-            className={`px-2 sm:px-3 py-1.5 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 flex items-center justify-center transition-colors ${
-              isFollowingUser 
-                ? "bg-blue-500 border-blue-500 text-white hover:bg-blue-600 dark:bg-blue-600 dark:border-blue-600 dark:hover:bg-blue-700" 
-                : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200 dark:hover:bg-neutral-700"
-            }`}
-            title={isFollowingUser ? "Following your location (pan to stop)" : "Center on my location"}
-            aria-label={isFollowingUser ? "Following location" : "Locate me"}
-          >
-            <span className="sm:hidden inline-block" aria-hidden>
-              {/* Crosshair icon with animation when following */}
               <svg 
-                width="18" 
-                height="18" 
+                width="20" 
+                height="20" 
                 viewBox="0 0 24 24" 
                 fill="none" 
                 stroke="currentColor" 
@@ -1586,65 +1527,88 @@ export default function MapPage() {
                 <path d="M12 2v3M12 19v3M22 12h-3M5 12H2"></path>
                 <path d="M19.07 4.93l-2.12 2.12M7.05 16.95l-2.12 2.12M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12"></path>
               </svg>
-            </span>
-            <span className="hidden sm:inline">
-              {isFollowingUser ? "Following" : "Locate me"}
-            </span>
-          </button>
-          {/* Colors toggle: icon on mobile, label on desktop */}
-          <button
-            onClick={() => setColorMode((m) => (m === "auto" ? "amber" : "auto"))}
-            className="px-2 sm:px-3 py-1.5 rounded border text-sm bg-white border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200 dark:hover:bg-neutral-700 flex items-center justify-center"
-            title="Toggle asset colors"
-            aria-label="Toggle asset colors"
-          >
-            <span className="sm:hidden inline-block" aria-hidden>
-              {/* Palette icon */}
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <span className="hidden sm:inline ml-1">
+                {isFollowingUser ? "Following" : "Locate"}
+              </span>
+            </button>
+
+            {/* Colors toggle - icon only on mobile */}
+            <button
+              onClick={() => setColorMode((m) => (m === "auto" ? "amber" : "auto"))}
+              className="min-w-[44px] min-h-[44px] rounded-lg border text-sm bg-white border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200 dark:hover:bg-neutral-700 flex items-center justify-center px-2 sm:px-3 transition-colors"
+              title={`Toggle asset colors (current: ${colorMode === "auto" ? "Auto" : "Amber"})`}
+              aria-label="Toggle asset colors"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 22c5.523 0 10-4.03 10-9s-4.477-9-10-9S2 8.03 2 13c0 2.761 2.239 5 5 5h1a2 2 0 0 0 2-2c0-1.105-.895-2-2-2H8"></path>
                 <circle cx="7.5" cy="10.5" r="1.5"></circle>
                 <circle cx="12" cy="8.5" r="1.5"></circle>
                 <circle cx="16.5" cy="10.5" r="1.5"></circle>
               </svg>
+              <span className="hidden sm:inline ml-1">
+                Colors: {colorMode === "auto" ? "Auto" : "Amber"}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Secondary row - Status and sync info */}
+        <div className="flex items-center justify-between gap-2 text-sm">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Accuracy indicator */}
+            <span className="px-2 py-1 rounded-md bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 text-xs font-mono">
+              {accuracy != null ? `±${accuracy}m` : "No GPS"}
             </span>
-            <span className="hidden sm:inline">Colours: {colorMode === "auto" ? "Auto" : "Amber"}</span>
-          </button>
-          <span className="text-sm px-2 py-1 rounded bg-white border border-gray-300 text-gray-700 dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200">
-            {accuracy != null ? `±${accuracy} m` : "--"}
-          </span>
-          
-          {/* Navigation sync status */}
+            
+            {/* Error messages */}
+            {searchError && (
+              <span className="px-2 py-1 rounded-md bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs">
+                {searchError}
+              </span>
+            )}
+            {error && (
+              <span className="px-2 py-1 rounded-md bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs">
+                {error}
+              </span>
+            )}
+            {loading && (
+              <span className="px-2 py-1 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs">
+                Loading…
+              </span>
+            )}
+          </div>
+
+          {/* Sync controls */}
           <div className="flex items-center gap-2">
             {navigationSyncLoading ? (
-              <span className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+              <span className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
                 <svg className="animate-spin w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                Syncing...
+                <span className="hidden sm:inline">Syncing...</span>
+                <span className="sm:hidden">Sync</span>
               </span>
             ) : (
               <button
                 onClick={triggerNavigationSync}
-                className="flex items-center gap-2 text-xs px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-gray-50 dark:hover:bg-neutral-700 text-gray-700 dark:text-gray-200 transition-colors"
+                className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-gray-50 dark:hover:bg-neutral-700 text-gray-700 dark:text-gray-200 transition-colors"
                 title={`${offlineAssetsCount} navigation assets and ${offlineInspectionsCount} inspections cached offline. Click to sync.`}
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                <span className="hidden sm:inline">
-                  Nav: {offlineAssetsCount}A/{offlineInspectionsCount}I
-                </span>
-                <span className="sm:hidden">
-                  {offlineAssetsCount + offlineInspectionsCount}
+                <span className="font-mono">
+                  {offlineAssetsCount}A/{offlineInspectionsCount}I
                 </span>
               </button>
             )}
+            
+            {navigationSyncError && (
+              <span className="px-2 py-1 rounded-md bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 text-xs">
+                Sync Error
+              </span>
+            )}
           </div>
-          
-          {loading && <span className="text-muted-foreground text-sm">Loading…</span>}
-          {error && <span className="text-red-600 text-sm">{error}</span>}
-          {searchError && <span className="text-red-600 text-sm">{searchError}</span>}
-          {navigationSyncError && <span className="text-orange-600 text-xs">Sync: {navigationSyncError}</span>}
         </div>
       </div>
       {showTokenWarning && (
