@@ -39,6 +39,29 @@ CREATE TABLE IF NOT EXISTS inspections_local (
   synced INTEGER DEFAULT 0,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS navigation_assets (
+  asset_number INTEGER PRIMARY KEY,
+  data TEXT NOT NULL,
+  synced INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS navigation_inspections (
+  primary_key TEXT PRIMARY KEY,
+  asset_id INTEGER,
+  data TEXT NOT NULL,
+  synced INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_nav_inspections_asset_id ON navigation_inspections(asset_id);
+CREATE TABLE IF NOT EXISTS navigation_asset_images (
+  asset_id INTEGER PRIMARY KEY,
+  image_path TEXT NOT NULL,
+  inspection_date TEXT,
+  cached_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_nav_asset_images_cached_at ON navigation_asset_images(cached_at);
 CREATE TABLE IF NOT EXISTS sync_queue (
   id TEXT PRIMARY KEY,
   entity TEXT NOT NULL,
@@ -112,6 +135,7 @@ async function init() : Promise<Database> {
     }
     // Restore from storage if present
     const stored = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null
+    
     if (stored) {
       try {
         const bytes = b64Decode(stored)
@@ -179,6 +203,51 @@ export async function addLocalInspection(i: any, synced = 0) {
   scheduleSave()
 }
 
+// Navigation Assets functions
+export async function getLocalNavigationAssets(): Promise<any[]> {
+  if (typeof window === 'undefined') return []
+  const d = await init();
+  const res = d.exec('SELECT data FROM navigation_assets ORDER BY asset_number')
+  if (!res.length) return []
+  return res[0].values.map((row: any[]) => JSON.parse(row[0] as string))
+}
+
+export async function upsertLocalNavigationAsset(asset: any, synced = 0) {
+  if (typeof window === 'undefined') return
+  const d = await init();
+  const rec = { ...asset }
+  d.run('INSERT OR REPLACE INTO navigation_assets (asset_number, data, synced, updated_at) VALUES (?,?,?,CURRENT_TIMESTAMP)', [rec.Asset_Number, JSON.stringify(rec), synced])
+  scheduleSave()
+}
+
+// Navigation Inspections functions
+export async function getLocalNavigationInspections(assetId?: number): Promise<any[]> {
+  if (typeof window === 'undefined') return []
+  const d = await init();
+  
+  let query = 'SELECT data FROM navigation_inspections'
+  let params: any[] = []
+  
+  if (assetId) {
+    query += ' WHERE asset_id = ?'
+    params = [assetId]
+  }
+  
+  query += ' ORDER BY updated_at DESC'
+  
+  const res = d.exec(query, params)
+  if (!res.length) return []
+  return res[0].values.map((row: any[]) => JSON.parse(row[0] as string))
+}
+
+export async function upsertLocalNavigationInspection(inspection: any, synced = 0) {
+  if (typeof window === 'undefined') return
+  const d = await init();
+  const rec = { ...inspection }
+  d.run('INSERT OR REPLACE INTO navigation_inspections (primary_key, asset_id, data, synced, updated_at) VALUES (?,?,?,?,CURRENT_TIMESTAMP)', [rec.primary_key, rec.asset_id, JSON.stringify(rec), synced])
+  scheduleSave()
+}
+
 export async function enqueue(item: Omit<QueueItem,'id'>) {
   if (typeof window === 'undefined') return 'noop'
   const d = await init();
@@ -229,6 +298,44 @@ export async function replaceTempEquipmentId(tempId: string, realId: string) {
   obj.id = realId
   d.run('DELETE FROM equipment_local WHERE id=?', [tempId])
   d.run('INSERT OR REPLACE INTO equipment_local (id, data, synced, updated_at) VALUES (?,?,1,CURRENT_TIMESTAMP)', [realId, JSON.stringify(obj), 1])
+}
+
+// Navigation asset image caching functions
+export async function cacheAssetImage(assetId: number, imagePath: string, inspectionDate?: string) {
+  if (typeof window === 'undefined') return
+  const d = await init()
+  d.run(
+    'INSERT OR REPLACE INTO navigation_asset_images (asset_id, image_path, inspection_date, cached_at) VALUES (?,?,?,CURRENT_TIMESTAMP)', 
+    [assetId, imagePath, inspectionDate || null]
+  )
+  scheduleSave()
+}
+
+export async function getCachedAssetImage(assetId: number): Promise<string | null> {
+  if (typeof window === 'undefined') return null
+  const d = await init()
+  const res = d.exec('SELECT image_path FROM navigation_asset_images WHERE asset_id=?', [assetId])
+  return res.length > 0 ? res[0].values[0][0] as string : null
+}
+
+export async function getAllCachedAssetImages(): Promise<Array<{ asset_id: number; image_path: string; inspection_date?: string }>> {
+  if (typeof window === 'undefined') return []
+  const d = await init()
+  const res = d.exec('SELECT asset_id, image_path, inspection_date FROM navigation_asset_images ORDER BY cached_at DESC')
+  if (!res.length) return []
+  
+  return res[0].values.map((row: any[]) => ({
+    asset_id: row[0] as number,
+    image_path: row[1] as string,
+    inspection_date: row[2] as string | undefined
+  }))
+}
+
+export async function clearAssetImageCache() {
+  if (typeof window === 'undefined') return
+  const d = await init()
+  d.run('DELETE FROM navigation_asset_images')
+  scheduleSave()
 }
 
 // Export helper to persist DB to localStorage if needed (optional)

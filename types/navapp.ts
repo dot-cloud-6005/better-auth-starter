@@ -1,6 +1,8 @@
 // Types for the imported NavApp data (inspections and equipment)
 
 export type InspectionRecord = {
+  _RowNumber?: string;
+  "Row ID"?: string;
   Key?: string; // asset number as string
   "Location Code"?: string;
   "Date/Time"?: string;
@@ -11,7 +13,19 @@ export type InspectionRecord = {
   "Attendance Type"?: string;
   "Asset Status"?: string;
   "Main Asset Photo"?: string;
+  "Additional #1"?: string;
+  "Additional #2"?: string;
+  "Additional #3"?: string;
+  "Additional #4"?: string;
+  "Additional #5"?: string;
+  "Additional #6"?: string;
+  Created?: string;
+  Modified?: string;
+  "Equipment Used"?: string;
+  "Used Equipment?"?: string;
+  Situation?: string;
   Location?: string;
+  "Primary Key"?: string;
 };
 
 export type EquipmentRecord = {
